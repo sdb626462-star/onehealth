@@ -81,4 +81,3 @@ st.warning(
     "Research demonstration only. This application is not a clinical decision-support "
     "system and should not be used for medical or public-health decisions."
 )
-
