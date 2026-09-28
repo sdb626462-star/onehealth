@@ -1,7 +1,6 @@
 import io
 import json
 import urllib.request
-import zipfile
 
 import numpy as np
 import pandas as pd
@@ -11,7 +10,9 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="OneHealth | Disease Forecasting", page_icon="🧬", layout="wide")
 
 DATA_URL = "https://raw.githubusercontent.com/benedekrozemberczki/pytorch_geometric_temporal/master/dataset/chickenpox.json"
-ARTIFACTS_URL = "https://api.github.com/repos/sdb626462-star/onehealth/actions/artifacts?per_page=20"
+MODEL_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/stgnn_disease_only_seed42.npz"
+METADATA_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/metadata.json"
+ADJACENCY_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/graph_adjacency.npy"
 
 REGIONS = [
     "Budapest", "Baranya", "Bács-Kiskun", "Békés",
@@ -31,32 +32,22 @@ def load_data():
 
 @st.cache_resource
 def load_model_artifacts():
-    req = urllib.request.Request(ARTIFACTS_URL, headers={"User-Agent": "OneHealth-Streamlit"})
-    with urllib.request.urlopen(req, timeout=30) as response:
-        info = json.loads(response.read().decode("utf-8"))
+    try:
+        req = urllib.request.Request(MODEL_URL, headers={"User-Agent": "OneHealth-Streamlit"})
+        with urllib.request.urlopen(req, timeout=60) as response:
+            weights = dict(np.load(io.BytesIO(response.read())))
 
-    matches = [
-        a for a in info.get("artifacts", [])
-        if a.get("name") == "onehealth-stgnn-model" and not a.get("expired", False)
-    ]
-    if not matches:
-        return None
+        req = urllib.request.Request(METADATA_URL, headers={"User-Agent": "OneHealth-Streamlit"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            metadata = json.loads(response.read().decode("utf-8"))
 
-    artifact = max(matches, key=lambda a: a.get("created_at", ""))
-    req = urllib.request.Request(
-        artifact["archive_download_url"],
-        headers={"User-Agent": "OneHealth-Streamlit"}
-    )
-    with urllib.request.urlopen(req, timeout=60) as response:
-        archive = response.read()
+        req = urllib.request.Request(ADJACENCY_URL, headers={"User-Agent": "OneHealth-Streamlit"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            adjacency = np.load(io.BytesIO(response.read()))
 
-    with zipfile.ZipFile(io.BytesIO(archive)) as z:
-        model_bytes = z.read("stgnn_disease_only_seed42.npz")
-        metadata = json.loads(z.read("metadata.json").decode("utf-8"))
-        adjacency = np.load(io.BytesIO(z.read("graph_adjacency.npy")))
-
-    weights = dict(np.load(io.BytesIO(model_bytes)))
-    return weights, metadata, adjacency
+        return weights, metadata, adjacency
+    except Exception as exc:
+        return None, None, None
 
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-np.clip(x, -60, 60)))
@@ -104,10 +95,10 @@ st.title("🧬 OneHealth")
 st.subheader("Spatio-Temporal Disease Forecasting")
 
 cases = load_data()
-artifacts = load_model_artifacts()
+weights, metadata, adjacency = load_model_artifacts()
 
-if artifacts is None:
-    st.warning("The ST-GNN training artifact is not available yet. The interface is showing the persistence baseline.")
+if weights is None:
+    st.warning("The ST-GNN checkpoint is temporarily unavailable. Showing the persistence baseline.")
 else:
     st.success("Disease-only ST-GNN checkpoint connected.")
 
@@ -119,11 +110,9 @@ with left:
     series = cases[:, idx]
     recent = series[-4:]
 
-    if artifacts is not None:
-        weights, metadata, adjacency = artifacts
+    if weights is not None:
         mean = float(metadata["normalization_mean"])
         std = float(metadata["normalization_std"])
-        # Each node receives its own recent 4-week history.
         window = ((cases[-4:] - mean) / (std + 1e-8)).T[:, :, None]
         pred_z = predict(weights, adjacency, window)
         prediction = float(pred_z[idx] * std + mean)
@@ -151,7 +140,7 @@ st.markdown("### Recent observations")
 recent_df = pd.DataFrame({"Lag": ["t-3", "t-2", "t-1", "t"], "Observed value": recent})
 st.dataframe(recent_df, use_container_width=True, hide_index=True)
 
-if artifacts is not None:
+if weights is not None:
     st.markdown("### Model information")
     st.write(
         f"Seed: {metadata['seed']} • Lookback: {metadata['lookback']} weeks • "
