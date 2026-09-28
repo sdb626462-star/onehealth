@@ -90,8 +90,8 @@ def load_data():
     # Convert raw CSV order to graph/model node order.
     cases = raw[:, GRAPH_TO_RAW]
 
-    if cases.shape != (521, 20):
-        raise ValueError(f"Expected (521, 20), got {cases.shape}")
+    if cases.shape != (522, 20):
+        raise ValueError(f"Expected (522, 20), got {cases.shape}")
 
     return cases
 
