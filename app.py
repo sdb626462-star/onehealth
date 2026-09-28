@@ -1,6 +1,7 @@
+import io
 import json
 import urllib.request
-from pathlib import Path
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="OneHealth | Disease Forecasting", page_icon="🧬", layout="wide")
 
 DATA_URL = "https://raw.githubusercontent.com/benedekrozemberczki/pytorch_geometric_temporal/master/dataset/chickenpox.json"
-MODEL_DIR = Path("model_artifacts")
+ARTIFACTS_URL = "https://api.github.com/repos/sdb626462-star/onehealth/actions/artifacts?per_page=20"
 
 REGIONS = [
     "Budapest", "Baranya", "Bács-Kiskun", "Békés",
@@ -30,14 +31,31 @@ def load_data():
 
 @st.cache_resource
 def load_model_artifacts():
-    model_path = MODEL_DIR / "stgnn_disease_only_seed42.npz"
-    meta_path = MODEL_DIR / "metadata.json"
-    adj_path = MODEL_DIR / "graph_adjacency.npy"
-    if not (model_path.exists() and meta_path.exists() and adj_path.exists()):
+    req = urllib.request.Request(ARTIFACTS_URL, headers={"User-Agent": "OneHealth-Streamlit"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        info = json.loads(response.read().decode("utf-8"))
+
+    matches = [
+        a for a in info.get("artifacts", [])
+        if a.get("name") == "onehealth-stgnn-model" and not a.get("expired", False)
+    ]
+    if not matches:
         return None
-    weights = dict(np.load(model_path))
-    metadata = json.loads(meta_path.read_text())
-    adjacency = np.load(adj_path)
+
+    artifact = max(matches, key=lambda a: a.get("created_at", ""))
+    req = urllib.request.Request(
+        artifact["archive_download_url"],
+        headers={"User-Agent": "OneHealth-Streamlit"}
+    )
+    with urllib.request.urlopen(req, timeout=60) as response:
+        archive = response.read()
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as z:
+        model_bytes = z.read("stgnn_disease_only_seed42.npz")
+        metadata = json.loads(z.read("metadata.json").decode("utf-8"))
+        adjacency = np.load(io.BytesIO(z.read("graph_adjacency.npy")))
+
+    weights = dict(np.load(io.BytesIO(model_bytes)))
     return weights, metadata, adjacency
 
 def sigmoid(x):
@@ -49,6 +67,7 @@ def predict(weights, adjacency, x):
     g2_w = weights["gcn2.linear.weight"]
     g2_b = weights["gcn2.linear.bias"]
     h_seq = []
+
     for t in range(4):
         h = adjacency @ x[:, t, :]
         h = h @ g1_w.T + g1_b
@@ -57,11 +76,13 @@ def predict(weights, adjacency, x):
         h = h @ g2_w.T + g2_b
         h = np.maximum(h, 0)
         h_seq.append(h)
+
     h = np.transpose(np.stack(h_seq, axis=0), (1, 0, 2))
     Wih = weights["gru.weight_ih_l0"]
     Whh = weights["gru.weight_hh_l0"]
     bih = weights["gru.bias_ih_l0"]
     bhh = weights["gru.bias_hh_l0"]
+
     hidden = np.zeros((20, 32), dtype=np.float32)
     for t in range(4):
         inp = h[:, t, :]
@@ -73,7 +94,11 @@ def predict(weights, adjacency, x):
         z = sigmoid(iz + hz)
         n = np.tanh(inn + r * hnn)
         hidden = (1.0 - z) * n + z * hidden
-    return (hidden @ weights["output_layer.weight"].T + weights["output_layer.bias"]).reshape(-1)
+
+    return (
+        hidden @ weights["output_layer.weight"].T
+        + weights["output_layer.bias"]
+    ).reshape(-1)
 
 st.title("🧬 OneHealth")
 st.subheader("Spatio-Temporal Disease Forecasting")
@@ -82,7 +107,7 @@ cases = load_data()
 artifacts = load_model_artifacts()
 
 if artifacts is None:
-    st.warning("The ST-GNN checkpoint is being prepared. The interface is temporarily showing the persistence baseline.")
+    st.warning("The ST-GNN training artifact is not available yet. The interface is showing the persistence baseline.")
 else:
     st.success("Disease-only ST-GNN checkpoint connected.")
 
@@ -98,8 +123,9 @@ with left:
         weights, metadata, adjacency = artifacts
         mean = float(metadata["normalization_mean"])
         std = float(metadata["normalization_std"])
-        window = ((recent - mean) / (std + 1e-8)).reshape(1, 4, 1)
-        pred_z = predict(weights, adjacency, np.tile(window, (20, 1, 1)))
+        # Each node receives its own recent 4-week history.
+        window = ((cases[-4:] - mean) / (std + 1e-8)).T[:, :, None]
+        pred_z = predict(weights, adjacency, window)
         prediction = float(pred_z[idx] * std + mean)
         label = "ST-GNN forecast"
     else:
