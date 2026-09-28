@@ -7,6 +7,8 @@ on:
       - "train_model.py"
       - ".github/workflows/train-model.yml"
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
