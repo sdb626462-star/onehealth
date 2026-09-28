@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="OneHealth | Disease Forecasting", page_icon="🧬", layout="wide")
 
 DATA_URL = "https://raw.githubusercontent.com/benedekrozemberczki/pytorch_geometric_temporal/master/dataset/chickenpox.json"
-MODEL_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/stgnn_disease_only_seed42.npz"
-METADATA_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/metadata.json"
-ADJACENCY_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/graph_adjacency.npy"
+MODEL_URL = "https://cdn.jsdelivr.net/gh/sdb626462-star/onehealth@main/model_artifacts/stgnn_disease_only_seed42.npz"
+METADATA_URL = "https://cdn.jsdelivr.net/gh/sdb626462-star/onehealth@main/model_artifacts/metadata.json"
+ADJACENCY_URL = "https://cdn.jsdelivr.net/gh/sdb626462-star/onehealth@main/model_artifacts/graph_adjacency.npy"
 
 REGIONS = [
     "Budapest", "Baranya", "Bács-Kiskun", "Békés",
