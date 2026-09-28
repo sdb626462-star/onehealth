@@ -29,7 +29,9 @@ jobs:
           pip install numpy torch
 
       - name: Train
-        run: python train_model.py
+        run: |
+          echo "Training from original Hungarian chickenpox case counts"
+          python train_model.py
 
       - name: Commit model files to repository
         run: |
