@@ -2,8 +2,10 @@ import json
 import urllib.request
 import numpy as np
 import pandas as pd
-import gradio as gr
+import streamlit as st
 import matplotlib.pyplot as plt
+
+st.set_page_config(page_title="OneHealth | Disease Forecasting", page_icon="🧬", layout="wide")
 
 DATA_URL = "https://raw.githubusercontent.com/benedekrozemberczki/pytorch_geometric_temporal/master/dataset/chickenpox.json"
 
@@ -16,8 +18,9 @@ REGIONS = [
     "Vas", "Veszprém", "Zala"
 ]
 
+@st.cache_data
 def load_data():
-    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OneHealth-demo"})
+    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OneHealth-Streamlit"})
     with urllib.request.urlopen(req, timeout=30) as response:
         data = json.loads(response.read().decode("utf-8"))
     cases = np.asarray(data["FX"], dtype=float)
@@ -25,54 +28,57 @@ def load_data():
         raise ValueError(f"Unexpected dataset shape: {cases.shape}")
     return cases
 
-def run_demo(region):
-    try:
-        cases = load_data()
-    except Exception as exc:
-        return None, f"Could not load public chickenpox dataset: {exc}", None
+st.title("🧬 OneHealth")
+st.subheader("Spatio-Temporal Disease Forecasting")
 
-    # Dataset's canonical 20-node order is used; label names are a display convenience.
+st.info(
+    "This deployed version is the OneHealth demonstration interface. "
+    "The trained ST-GNN checkpoint has not yet been connected, so the "
+    "current forecast is an explicitly labelled persistence baseline."
+)
+
+try:
+    cases = load_data()
+except Exception as exc:
+    st.error(f"Could not load the public demonstration dataset: {exc}")
+    st.stop()
+
+left, right = st.columns([1, 2])
+
+with left:
+    region = st.selectbox("Select region", REGIONS)
     idx = REGIONS.index(region)
     series = cases[:, idx]
     recent = series[-4:]
-    prediction = float(recent[-1])  # transparent persistence baseline; not ST-GNN inference
+    prediction = float(recent[-1])
+    st.metric("Next-step baseline", f"{prediction:.2f}")
+    st.caption("Baseline = most recent observed value")
 
+with right:
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(np.arange(len(series)), series, label="Observed")
-    ax.scatter([len(series)], [prediction], label="Next-step persistence baseline")
+    ax.plot(series, label="Observed")
+    ax.scatter([len(series)], [prediction], marker="o", label="Next-step baseline")
     ax.set_title(f"Weekly chickenpox cases — {region}")
     ax.set_xlabel("Weekly observation index")
     ax.set_ylabel("Cases (dataset scale)")
     ax.legend()
     ax.grid(alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
-    recent_df = pd.DataFrame({
-        "Lag": ["t-3", "t-2", "t-1", "t"],
-        "Observed value": recent
-    })
-    summary = (
-        f"**OneHealth demo — {region}**\n\n"
-        f"Most recent 4 values: {', '.join(f'{x:.2f}' for x in recent)}\n\n"
-        f"Next-step persistence baseline: **{prediction:.2f}**\n\n"
-        "**Important:** This is a baseline demonstration, not the trained OneHealth ST-GNN. "
-        "The notebook was provided without its trained checkpoint and required preprocessing artifacts. "
-        "No clinical or public-health decision should rely on this demo."
-    )
-    return fig, summary, recent_df
+st.markdown("### Recent observations")
+recent_df = pd.DataFrame({"Lag": ["t-3", "t-2", "t-1", "t"], "Observed value": recent})
+st.dataframe(recent_df, use_container_width=True, hide_index=True)
 
-with gr.Blocks(title="OneHealth | Disease Forecasting") as demo:
-    gr.Markdown("# OneHealth\n### Spatio-temporal disease forecasting — interactive demo")
-    gr.Markdown(
-        "Explore the public Hungarian chickenpox time series. This starter Space currently "
-        "shows a transparent persistence baseline while the trained ST-GNN checkpoint is being connected."
-    )
-    region = gr.Dropdown(REGIONS, value=REGIONS[0], label="Select region")
-    btn = gr.Button("Generate demo")
-    plot = gr.Plot(label="Historical series and baseline")
-    output = gr.Markdown()
-    table = gr.Dataframe(label="Most recent four observations", interactive=False)
-    btn.click(run_demo, inputs=region, outputs=[plot, output, table])
-    demo.load(run_demo, inputs=region, outputs=[plot, output, table])
+st.markdown("### Model status")
+st.write(
+    "The production interface is ready. The next step is to connect the trained "
+    "OneHealth ST-GNN checkpoint, graph structure, normalization parameters, and "
+    "exact preprocessing pipeline from the training notebook."
+)
 
-if __name__ == "__main__":
-    demo.launch()
+st.warning(
+    "Research demonstration only. This application is not a clinical decision-support "
+    "system and should not be used for medical or public-health decisions."
+)
+
