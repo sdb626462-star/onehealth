@@ -1,0 +1,16 @@
+{
+  "model": "OneHealth disease-only ST-GNN V4 architecture",
+  "seed": 42,
+  "epochs": 100,
+  "lookback": 4,
+  "regions": 20,
+  "public_source_rows": 521,
+  "train_samples": 413,
+  "test_samples": 104,
+  "normalization_mean": -0.0035898273345083,
+  "normalization_std": 0.9939349293708801,
+  "mae_standardized": 0.6466660499572754,
+  "rmse_standardized": 0.9955353140830994,
+  "r2_standardized": 0.06440623052987116,
+  "note": "Retrained from the currently public 521-row benchmark source; the historical 522-row Kaggle artifact is not recreated."
+}
