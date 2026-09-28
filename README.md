@@ -1,37 +1,17 @@
----
-title: OneHealth Disease Forecasting
-emoji: 🧬
-colorFrom: blue
-colorTo: green
-sdk: gradio
-sdk_version: 5.49.1
-app_file: app.py
-pinned: false
----
+# OneHealth
 
-# OneHealth — Disease Forecasting Demo
+Streamlit deployment of the OneHealth disease-forecasting demonstration.
 
-This is a deployable Hugging Face Spaces starter generated from the uploaded OneHealth notebook context.
+## Current status
+The web interface currently uses a transparent persistence baseline.
+The trained OneHealth ST-GNN checkpoint is not included because the
+trained binary artifacts were not available with the notebook upload.
 
-## Included
-- Gradio interface
-- Region selector
-- Historical chickenpox series visualization
-- Explicit persistence-baseline forecast
-- Dataset fetched from the public PyTorch Geometric Temporal repository
+The next step is to connect the trained checkpoint and preprocessing
+artifacts to the inference pipeline.
 
-## Important model status
-This starter does **not** load the trained OneHealth ST-GNN. The notebook references trained checkpoints and preprocessing artifacts, but those binary artifacts were not included with the notebook upload. The current forecast is a clearly labelled persistence baseline, not a trained-model prediction.
-
-## Deploy
-Create a new Hugging Face Space with the **Gradio** SDK, then upload `app.py`, `requirements.txt`, and this `README.md`.
-
-Once the trained checkpoint, exact model class, graph, and normalization artifacts are recovered, replace the baseline inference path with the trained ST-GNN pipeline.
-
-## Run locally
-```bash
-pip install -r requirements.txt
-python app.py
-```
+## Entry point
+`app.py`
 
 This is a research demonstration, not a clinical decision-support tool.
+
