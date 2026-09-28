@@ -27,6 +27,31 @@ REGIONS = [
     "Vas", "Veszprém", "Zala"
 ]
 
+# The benchmark checkpoint uses the PyTorch Geometric Temporal node order,
+# which differs from the human-readable display order above.
+GRAPH_INDEX = {
+    "Bács-Kiskun": 0,
+    "Baranya": 1,
+    "Békés": 2,
+    "Borsod-Abaúj-Zemplén": 3,
+    "Budapest": 4,
+    "Csongrád-Csanád": 5,
+    "Fejér": 6,
+    "Győr-Moson-Sopron": 7,
+    "Hajdú-Bihar": 8,
+    "Heves": 9,
+    "Jász-Nagykun-Szolnok": 10,
+    "Komárom-Esztergom": 11,
+    "Nógrád": 12,
+    "Pest": 13,
+    "Somogy": 14,
+    "Szabolcs-Szatmár-Bereg": 15,
+    "Tolna": 16,
+    "Vas": 17,
+    "Veszprém": 18,
+    "Zala": 19,
+}
+
 @st.cache_data
 def load_data():
     req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OneHealth-Streamlit"})
@@ -86,12 +111,13 @@ st.subheader("Spatio-Temporal Disease Forecasting")
 cases = load_data()
 weights, metadata, adjacency = load_model_artifacts()
 st.success("Disease-only ST-GNN checkpoint connected.")
+st.info("The deployed benchmark checkpoint predicts a standardized disease signal, not raw case counts.")
 
 left, right = st.columns([1, 2])
 
 with left:
     region = st.selectbox("Select region", REGIONS)
-    idx = REGIONS.index(region)
+    idx = GRAPH_INDEX[region]
     series = cases[:, idx]
 
     mean = float(metadata["normalization_mean"])
@@ -100,16 +126,16 @@ with left:
     pred_z = predict(weights, adjacency, window)
     prediction = float(pred_z[idx] * std + mean)
 
-    st.metric("Next-week forecast", f"{prediction:.2f}")
-    st.caption("ST-GNN forecast")
+    st.metric("Next-week ST-GNN signal", f"{prediction:.2f}")
+    st.caption("Standardized disease signal — not reported case count")
 
 with right:
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(series, label="Observed")
     ax.scatter([len(series)], [prediction], marker="o", label="Forecast")
-    ax.set_title(f"Weekly chickenpox cases — {region}")
+    ax.set_title(f"Weekly chickenpox disease signal — {region}")
     ax.set_xlabel("Weekly observation index")
-    ax.set_ylabel("Cases")
+    ax.set_ylabel("Standardized signal")
     ax.legend()
     ax.grid(alpha=0.2)
     st.pyplot(fig, use_container_width=True)
@@ -118,7 +144,7 @@ with right:
 st.markdown("### Recent observations")
 recent_df = pd.DataFrame({
     "Lag": ["t-3", "t-2", "t-1", "t"],
-    "Observed value": series[-4:]
+    "Observed standardized signal": series[-4:]
 })
 st.dataframe(recent_df, use_container_width=True, hide_index=True)
 
@@ -128,8 +154,10 @@ st.write(
     f"Training samples: {metadata['train_samples']} • Public source rows: {metadata['public_source_rows']}"
 )
 st.caption(
-    "Deployment uses the disease-only V4 architecture retrained from the currently public "
-    "521-row benchmark source. The historical 522-row Kaggle artifact is not recreated."
+    "Deployment uses the disease-only V4 architecture and the currently deployed "
+    "PyTorch Geometric Temporal benchmark representation. The displayed model "
+    "output is a standardized disease signal; a raw-case forecast requires a "
+    "checkpoint retrained directly on the original case-count CSV."
 )
 st.warning(
     "Research demonstration only. This application is not a clinical decision-support system "
