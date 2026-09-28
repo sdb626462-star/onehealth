@@ -7,8 +7,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+# Raw UCI mirror of the Hungarian Chickenpox Cases dataset.
+# The JSON benchmark used previously contains transformed values; the app
+# should display the original weekly case counts.
+RAW_DATA_URL = (
+    "https://raw.githubusercontent.com/stmaletz/glmSTARMA/"
+    "0bf08dd5ee22cf7d2da03f21b1db7a9701ffca24/"
+    "data-raw/chickenpox/hungary_chickenpox.csv"
+)
 
-DATA_URL = "https://raw.githubusercontent.com/benedekrozemberczki/pytorch_geometric_temporal/master/dataset/chickenpox.json"
 OUT = Path("model_artifacts")
 OUT.mkdir(exist_ok=True)
 
@@ -16,6 +23,44 @@ SEED = 42
 LOOKBACK = 4
 TRAIN_SAMPLES = 413
 EPOCHS = 100
+
+# Graph-node order used by the PyTorch Geometric Temporal benchmark.
+REGIONS = [
+    "Bacs", "Baranya", "Bekes", "Borsod", "Budapest",
+    "Csongrad", "Fejer", "Gyor", "Hajdu", "Heves",
+    "Jasz", "Komarom", "Nograd", "Pest", "Somogy",
+    "Szabolcs", "Tolna", "Vas", "Veszprem", "Zala"
+]
+
+RAW_COLUMNS = [
+    "BUDAPEST", "BARANYA", "BACS", "BEKES", "BORSOD",
+    "CSONGRAD", "FEJER", "GYOR", "HAJDU", "HEVES",
+    "JASZ", "KOMAROM", "NOGRAD", "PEST", "SOMOGY",
+    "SZABOLCS", "TOLNA", "VAS", "VESZPREM", "ZALA"
+]
+
+GRAPH_TO_RAW = [
+    RAW_COLUMNS.index("BACS"),
+    RAW_COLUMNS.index("BARANYA"),
+    RAW_COLUMNS.index("BEKES"),
+    RAW_COLUMNS.index("BORSOD"),
+    RAW_COLUMNS.index("BUDAPEST"),
+    RAW_COLUMNS.index("CSONGRAD"),
+    RAW_COLUMNS.index("FEJER"),
+    RAW_COLUMNS.index("GYOR"),
+    RAW_COLUMNS.index("HAJDU"),
+    RAW_COLUMNS.index("HEVES"),
+    RAW_COLUMNS.index("JASZ"),
+    RAW_COLUMNS.index("KOMAROM"),
+    RAW_COLUMNS.index("NOGRAD"),
+    RAW_COLUMNS.index("PEST"),
+    RAW_COLUMNS.index("SOMOGY"),
+    RAW_COLUMNS.index("SZABOLCS"),
+    RAW_COLUMNS.index("TOLNA"),
+    RAW_COLUMNS.index("VAS"),
+    RAW_COLUMNS.index("VESZPREM"),
+    RAW_COLUMNS.index("ZALA"),
+]
 
 
 def set_seed(seed):
@@ -25,16 +70,30 @@ def set_seed(seed):
 
 
 def load_data():
-    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OneHealth-model-builder"})
+    req = urllib.request.Request(
+        RAW_DATA_URL,
+        headers={"User-Agent": "OneHealth-model-builder"},
+    )
     with urllib.request.urlopen(req, timeout=60) as r:
-        data = json.loads(r.read().decode("utf-8"))
-    cases = np.asarray(data["FX"], dtype=np.float32)
-    edges = np.asarray(data["edges"], dtype=np.int64)
-    if cases.shape[1] != 20:
-        raise ValueError(f"Expected 20 regions, got {cases.shape}")
-    if edges.shape[1] != 2:
-        raise ValueError(f"Unexpected edge shape: {edges.shape}")
-    return cases, edges
+        text = r.read().decode("utf-8")
+
+    lines = text.strip().splitlines()
+    header = lines[0].split(",")
+    if header[1:] != RAW_COLUMNS:
+        raise ValueError("Unexpected Hungarian chickenpox column order.")
+
+    raw = np.asarray(
+        [[float(v) for v in line.split(",")[1:]] for line in lines[1:]],
+        dtype=np.float32,
+    )
+
+    # Convert raw CSV order to graph/model node order.
+    cases = raw[:, GRAPH_TO_RAW]
+
+    if cases.shape != (521, 20):
+        raise ValueError(f"Expected (521, 20), got {cases.shape}")
+
+    return cases
 
 
 class GCNLayer(nn.Module):
@@ -70,19 +129,17 @@ class STGNN(nn.Module):
 
 def main():
     set_seed(SEED)
-    cases, edges = load_data()
+    cases = load_data()
 
-    # The currently public benchmark source has 521 observations.
-    # We use it as-is and never invent the missing historical row.
-    train_end_week = TRAIN_SAMPLES
-    mean = float(cases[:train_end_week].mean())
-    std = float(cases[:train_end_week].std())
-
+    # Standardize each region separately, using training-period statistics.
+    train_end_week = TRAIN_SAMPLES + LOOKBACK
+    mean = cases[:train_end_week].mean(axis=0)
+    std = cases[:train_end_week].std(axis=0)
     z = (cases - mean) / (std + 1e-8)
 
     xs, ys = [], []
     for t in range(LOOKBACK, len(z)):
-        xs.append(z[t-LOOKBACK:t].T[:, :, None])
+        xs.append(z[t - LOOKBACK:t].T[:, :, None])
         ys.append(z[t])
 
     X = np.asarray(xs, dtype=np.float32)
@@ -90,10 +147,21 @@ def main():
 
     X_train = torch.from_numpy(X[:TRAIN_SAMPLES])
     Y_train = torch.from_numpy(Y[:TRAIN_SAMPLES])
-
     X_test = torch.from_numpy(X[TRAIN_SAMPLES:])
     Y_test = torch.from_numpy(Y[TRAIN_SAMPLES:])
 
+    # Reuse the verified 20-node graph from the benchmark JSON.
+    graph_url = (
+        "https://raw.githubusercontent.com/benedekrozemberczki/"
+        "pytorch_geometric_temporal/master/dataset/chickenpox.json"
+    )
+    req = urllib.request.Request(
+        graph_url, headers={"User-Agent": "OneHealth-model-builder"}
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        graph = json.loads(r.read().decode("utf-8"))
+
+    edges = np.asarray(graph["edges"], dtype=np.int64)
     A = torch.zeros(20, 20, dtype=torch.float32)
     for a, b in edges:
         A[a, b] = 1.0
@@ -104,11 +172,13 @@ def main():
     A_norm = torch.diag(dinv) @ A @ torch.diag(dinv)
 
     model = STGNN()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=0.001, weight_decay=1e-5
+    )
     criterion = nn.MSELoss()
 
     model.train()
-    for epoch in range(EPOCHS):
+    for _ in range(EPOCHS):
         optimizer.zero_grad()
         pred = model(X_train, A_norm)
         loss = criterion(pred, Y_train)
@@ -118,18 +188,25 @@ def main():
 
     model.eval()
     with torch.no_grad():
-        pred = model(X_test, A_norm).numpy()
+        pred_z = model(X_test, A_norm).numpy()
 
-    actual = Y_test.numpy()
-    mae = float(np.mean(np.abs(pred - actual)))
-    rmse = float(np.sqrt(np.mean((pred - actual) ** 2)))
-    ss_res = float(np.sum((pred - actual) ** 2))
-    ss_tot = float(np.sum((actual - actual.mean()) ** 2))
+    actual_z = Y_test.numpy()
+    mean_flat = np.tile(mean, X_test.shape[0])
+    std_flat = np.tile(std, X_test.shape[0])
+    pred_cases = pred_z.reshape(-1) * std_flat + mean_flat
+    actual_cases = actual_z.reshape(-1) * std_flat + mean_flat
+
+    mae = float(np.mean(np.abs(pred_cases - actual_cases)))
+    rmse = float(np.sqrt(np.mean((pred_cases - actual_cases) ** 2)))
+    ss_res = float(np.sum((pred_cases - actual_cases) ** 2))
+    ss_tot = float(np.sum((actual_cases - actual_cases.mean()) ** 2))
     r2 = float(1.0 - ss_res / ss_tot)
 
-    state = {k: v.detach().cpu().numpy() for k, v in model.state_dict().items()}
+    state = {
+        k: v.detach().cpu().numpy()
+        for k, v in model.state_dict().items()
+    }
     np.savez(OUT / "stgnn_disease_only_seed42.npz", **state)
-
     np.save(OUT / "graph_adjacency.npy", A_norm.numpy())
 
     metadata = {
@@ -138,15 +215,21 @@ def main():
         "epochs": EPOCHS,
         "lookback": LOOKBACK,
         "regions": 20,
+        "region_order": REGIONS,
         "public_source_rows": int(cases.shape[0]),
         "train_samples": int(X_train.shape[0]),
         "test_samples": int(X_test.shape[0]),
-        "normalization_mean": mean,
-        "normalization_std": std,
-        "mae_standardized": mae,
-        "rmse_standardized": rmse,
-        "r2_standardized": r2,
-        "note": "Retrained from the currently public 521-row benchmark source; the historical 522-row Kaggle artifact is not recreated."
+        "normalization_mean": mean.tolist(),
+        "normalization_std": std.tolist(),
+        "mae_cases": mae,
+        "rmse_cases": rmse,
+        "r2_cases": r2,
+        "raw_source": RAW_DATA_URL,
+        "note": (
+            "Retrained on the original weekly case-count CSV. "
+            "The graph/model node order is explicitly aligned with the "
+            "PyTorch Geometric Temporal benchmark."
+        ),
     }
     (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
