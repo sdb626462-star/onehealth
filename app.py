@@ -354,14 +354,15 @@ google_key = st.secrets.get("GOOGLE_MAPS_API_KEY", None)
 if google_key:
     import streamlit.components.v1 as components
     map_points = []
-    for region, row in forecast_df.iterrows():
+    for _, row in overview.iterrows():
+        region = row["Region"]
         if region in MAP_COORDS:
             lat, lon = MAP_COORDS[region]
             map_points.append({
                 "region": region,
                 "lat": float(lat),
                 "lon": float(lon),
-                "forecast": float(row["Forecast"]),
+                "forecast": float(row["Forecast next week"]),
             })
 
     points_json = json.dumps(map_points, ensure_ascii=False)
@@ -397,8 +398,8 @@ if google_key:
 else:
     st.info("Google Maps is ready to use once GOOGLE_MAPS_API_KEY is added to the Streamlit app secrets. A built-in map is shown below meanwhile.")
     map_df = pd.DataFrame(
-        [{"lat": MAP_COORDS[r][0], "lon": MAP_COORDS[r][1], "region": r}
-         for r in forecast_df.index if r in MAP_COORDS]
+        [{"lat": MAP_COORDS[region][0], "lon": MAP_COORDS[region][1], "region": region}
+         for region in overview["Region"] if region in MAP_COORDS]
     ).set_index("region")
     st.map(map_df, latitude="lat", longitude="lon", size=20)
 
