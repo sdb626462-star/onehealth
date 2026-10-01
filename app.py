@@ -379,47 +379,78 @@ if mappls_key:
     points_json = json.dumps(map_points, ensure_ascii=False)
 
     html = f"""
-    <style>
-      html, body, #onehealth-map {{
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 560px;
-      }}
-    </style>
+    <!doctype html>
+    <html>
+    <head>
+      <meta name="viewport" content="initial-scale=1.0">
+      <meta charset="utf-8">
+      <style>
+        html, body, #map {{
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 560px;
+          overflow: hidden;
+        }}
+        #status {{
+          position: absolute;
+          z-index: 10;
+          top: 10px;
+          left: 10px;
+          background: white;
+          color: #333;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font: 14px Arial;
+        }}
+      </style>
+      <script>
+        var predictionPoints = {points_json};
+        var oneHealthMap;
 
-    <div id="onehealth-map"></div>
+        function initOneHealthMap() {{
+          document.getElementById("status").style.display = "none";
 
-    <script>
-      var oneHealthMap;
-      var predictionPoints = {points_json};
-
-      function initOneHealthMap() {{
-        oneHealthMap = new mappls.Map("onehealth-map", {{
-          center: [47.1625, 19.5033],
-          zoom: 6,
-          zoomControl: true,
-          location: false,
-          fullscreenControl: true
-        }});
-
-        predictionPoints.forEach(function(p) {{
-          new mappls.Marker({{
-            map: oneHealthMap,
-            position: {{
-              lat: p.lat,
-              lng: p.lon
-            }},
-            fitbounds: false
+          oneHealthMap = new mappls.Map("map", {{
+            center: [47.1625, 19.5033],
+            zoom: 6,
+            zoomControl: true,
+            fullscreenControl: true
           }});
-        }});
-      }}
-    </script>
 
-    <script
-      src="https://apis.mappls.com/advancedmaps/api/{mappls_key}/map_sdk?layer=vector&v=3.0&callback=initOneHealthMap"
-      defer async>
-    </script>
+          oneHealthMap.addListener("load", function() {{
+            predictionPoints.forEach(function(p) {{
+              new mappls.Marker({{
+                map: oneHealthMap,
+                position: {{
+                  lat: p.lat,
+                  lng: p.lon
+                }},
+                fitbounds: false,
+                icon_url: "https://apis.mappls.com/map_v3/1.png"
+              }});
+            }});
+          }});
+        }}
+
+        window.setTimeout(function() {{
+          var status = document.getElementById("status");
+          if (status && status.style.display !== "none") {{
+            status.innerHTML =
+              "Mappls did not initialize. Check that the Mappls Web Maps token is valid and enabled.";
+          }}
+        }}, 10000);
+      </script>
+      <script
+        src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_key}&callback=initOneHealthMap"
+        defer>
+      </script>
+    </head>
+    <body>
+      <div id="status">Loading Mappls map…</div>
+      <div id="map"></div>
+    </body>
+    </html>
     """
 
     components.html(html, height=580, scrolling=False)
