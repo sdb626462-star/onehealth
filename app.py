@@ -379,6 +379,11 @@ else:
                     "lat": float(lat),
                     "lon": float(lon),
                     "forecast": forecast,
+                    "current": float(
+                        overview.loc[
+                            overview["Region"] == region_name, "Reported now"
+                        ].iloc[0]
+                    ),
                 }
             )
 
@@ -411,16 +416,48 @@ else:
           }});
 
           map.addListener("load", function() {{
+            const iconFor = function(color) {{
+              const svg =
+                "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='56' viewBox='0 0 44 56'>" +
+                "<path d='M22 54C20 48 7 36 7 22C7 13.7 13.7 7 22 7C30.3 7 37 13.7 37 22C37 36 24 48 22 54Z' fill='" +
+                color +
+                "' stroke='white' stroke-width='3'/>" +
+                "<circle cx='22' cy='22' r='8' fill='white'/>" +
+                "</svg>";
+              return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+            }};
+
             const features = points.map(function(p) {{
+              let color = "#9e9e9e";
+              let trend = "No recent cases";
+
+              if (p.current > 0) {{
+                const change = ((p.forecast - p.current) / p.current) * 100;
+                if (change >= 10) {{
+                  color = "#d32f2f";
+                  trend = "Increasing";
+                }} else if (change <= -10) {{
+                  color = "#2e7d32";
+                  trend = "Decreasing";
+                }} else {{
+                  color = "#f9a825";
+                  trend = "Similar to latest week";
+                }}
+              }}
+
               return {{
                 type: "Feature",
                 properties: {{
                   htmlPopup:
-                    "<div style='min-width:180px'>" +
+                    "<div style='min-width:200px;font-family:Arial,sans-serif'>" +
                     "<b>" + p.region + "</b><br>" +
-                    "Next-week estimate: <b>" +
-                    p.forecast.toFixed(1) +
-                    " cases</b></div>"
+                    "<span style='color:" + color + ";font-weight:700'>" +
+                    trend + "</span><br>" +
+                    "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
+                    "Next-week estimate: <b>" + p.forecast.toFixed(1) +
+                    "</b> cases</div>",
+                  icon: iconFor(color),
+                  "icon-size": 0.8
                 }},
                 geometry: {{
                   type: "Point",
@@ -429,21 +466,17 @@ else:
               }};
             }});
 
-            new mappls.Marker({{
+            new mappls().addGeoJson({{
               map: map,
-              position: {{
-                id: "onehealth-predictions",
+              data: {{
                 type: "FeatureCollection",
                 features: features
               }},
-              icon_url: "https://apis.mappls.com/map_v3/1.png",
-              clusters: false,
               fitbounds: true,
-              fitboundOptions: {{
-                padding: 80
-              }}
+              cType: 0
             }});
-          }});        }}
+          }});
+        }}
       </script>
       <script
         src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_token}&callback=initMap1"
@@ -456,7 +489,6 @@ else:
     </body>
     </html>
     """
-
     components.html(html, height=580, scrolling=False)
 
 
