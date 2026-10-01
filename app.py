@@ -322,6 +322,87 @@ with st.expander("How should I read this?"):
     )
 
 # ---------------------------------------------------------------------
+# --- Prediction map (safe embedded Google Maps) ---
+
+MAP_COORDS = {
+    "Bács-Kiskun": (46.6700, 19.4800),
+    "Baranya": (46.0700, 18.2300),
+    "Békés": (46.6800, 21.0900),
+    "Borsod-Abaúj-Zemplén": (48.1000, 21.3000),
+    "Budapest": (47.4979, 19.0402),
+    "Csongrád-Csanád": (46.2500, 20.1500),
+    "Fejér": (47.1700, 18.5500),
+    "Győr-Moson-Sopron": (47.6500, 17.2500),
+    "Hajdú-Bihar": (47.4500, 21.4000),
+    "Heves": (47.9000, 20.1000),
+    "Jász-Nagykun-Szolnok": (47.3500, 20.2000),
+    "Komárom-Esztergom": (47.6000, 18.2000),
+    "Nógrád": (48.0000, 19.6000),
+    "Pest": (47.4500, 19.5000),
+    "Somogy": (46.4500, 17.7500),
+    "Szabolcs-Szatmár-Bereg": (48.0000, 21.9000),
+    "Tolna": (46.5000, 18.5500),
+    "Vas": (47.1000, 16.7000),
+    "Veszprém": (47.1000, 17.9000),
+    "Zala": (46.8400, 16.8400),
+}
+
+st.subheader("🗺️ Prediction map")
+st.caption("Next-week model estimates by region. Marker labels show the predicted reported case count.")
+
+google_key = st.secrets.get("GOOGLE_MAPS_API_KEY", None)
+if google_key:
+    import streamlit.components.v1 as components
+    map_points = []
+    for region, row in forecast_df.iterrows():
+        if region in MAP_COORDS:
+            lat, lon = MAP_COORDS[region]
+            map_points.append({
+                "region": region,
+                "lat": float(lat),
+                "lon": float(lon),
+                "forecast": float(row["Forecast"]),
+            })
+
+    points_json = json.dumps(map_points, ensure_ascii=False)
+    html = f"""
+    <div id="map" style="width:100%;height:560px;border-radius:10px;"></div>
+    <script>
+    function initOneHealthMap() {{
+        const points = {points_json};
+        const map = new google.maps.Map(document.getElementById("map"), {{
+            center: {{lat: 47.1625, lng: 19.5033}},
+            zoom: 7,
+            mapTypeControl: true,
+            streetViewControl: false,
+            fullscreenControl: true
+        }});
+        const info = new google.maps.InfoWindow();
+        points.forEach(p => {{
+            const marker = new google.maps.Marker({{
+                position: {{lat: p.lat, lng: p.lon}},
+                map: map,
+                title: p.region + ": " + p.forecast.toFixed(1) + " cases"
+            }});
+            marker.addListener("click", () => {{
+                info.setContent("<b>" + p.region + "</b><br>Next-week estimate: " + p.forecast.toFixed(1) + " cases");
+                info.open(map, marker);
+            }});
+        }});
+    }}
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key={google_key}&callback=initOneHealthMap"></script>
+    """
+    components.html(html, height=580, scrolling=False)
+else:
+    st.info("Google Maps is ready to use once GOOGLE_MAPS_API_KEY is added to the Streamlit app secrets. A built-in map is shown below meanwhile.")
+    map_df = pd.DataFrame(
+        [{"lat": MAP_COORDS[r][0], "lon": MAP_COORDS[r][1], "region": r}
+         for r in forecast_df.index if r in MAP_COORDS]
+    ).set_index("region")
+    st.map(map_df, latitude="lat", longitude="lon", size=20)
+
+
 # Regional overview
 # ---------------------------------------------------------------------
 st.markdown("### 🗺️ Regional overview")
