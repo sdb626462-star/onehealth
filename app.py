@@ -407,7 +407,6 @@ else:
       <script>
         function initMap1() {{
           const points = {points_json};
-
           const map = new mappls.Map("onehealth-map", {{
             center: [47.20, 19.40],
             zoom: 6,
@@ -416,65 +415,53 @@ else:
           }});
 
           map.addListener("load", function() {{
-            const iconFor = function(color) {{
-              const svg =
-                "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='56' viewBox='0 0 44 56'>" +
-                "<path d='M22 54C20 48 7 36 7 22C7 13.7 13.7 7 22 7C30.3 7 37 13.7 37 22C37 36 24 48 22 54Z' fill='" +
-                color +
-                "' stroke='white' stroke-width='3'/>" +
-                "<circle cx='22' cy='22' r='8' fill='white'/>" +
-                "</svg>";
-              return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
-            }};
+            const bounds = [];
 
-            const features = points.map(function(p) {{
-              let color = "#9e9e9e";
+            points.forEach(function(p) {{
+              let colorName = "none";
               let trend = "No recent cases";
 
               if (p.current > 0) {{
                 const change = ((p.forecast - p.current) / p.current) * 100;
                 if (change >= 10) {{
-                  color = "#d32f2f";
+                  colorName = "increasing";
                   trend = "Increasing";
                 }} else if (change <= -10) {{
-                  color = "#2e7d32";
+                  colorName = "decreasing";
                   trend = "Decreasing";
                 }} else {{
-                  color = "#f9a825";
+                  colorName = "similar";
                   trend = "Similar to latest week";
                 }}
               }}
 
-              return {{
-                type: "Feature",
-                properties: {{
-                  htmlPopup:
-                    "<div style='min-width:200px;font-family:Arial,sans-serif'>" +
-                    "<b>" + p.region + "</b><br>" +
-                    "<span style='color:" + color + ";font-weight:700'>" +
-                    trend + "</span><br>" +
-                    "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
-                    "Next-week estimate: <b>" + p.forecast.toFixed(1) +
-                    "</b> cases</div>",
-                  icon: iconFor(color),
-                  "icon-size": 0.8
+              const iconUrl =
+                "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/map_icons/" +
+                colorName + ".svg";
+
+              new mappls.Marker({{
+                map: map,
+                position: {{
+                  lat: p.lat,
+                  lng: p.lon
                 }},
-                geometry: {{
-                  type: "Point",
-                  coordinates: [p.lat, p.lon]
-                }}
-              }};
+                icon_url: iconUrl,
+                fitbounds: false,
+                popupHtml:
+                  "<div style='min-width:200px;font-family:Arial,sans-serif'>" +
+                  "<b>" + p.region + "</b><br>" +
+                  "<b>" + trend + "</b><br>" +
+                  "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
+                  "Next-week estimate: <b>" + p.forecast.toFixed(1) +
+                  "</b> cases</div>"
+              }});
+
+              bounds.push([p.lat, p.lon]);
             }});
 
-            new mappls().addGeoJson({{
-              map: map,
-              data: {{
-                type: "FeatureCollection",
-                features: features
-              }},
-              fitbounds: true,
-              cType: 0
-            }});
+            if (bounds.length && map.fitBounds) {{
+              map.fitBounds(bounds);
+            }}
           }});
         }}
       </script>
