@@ -447,28 +447,33 @@ else:
                 "Next-week estimate: <b>" + p.forecast.toFixed(1) +
                 "</b> cases</div>";
 
-              const marker = new mappls.Marker({{
+              // Use an HTML marker so the statistics tooltip is controlled by
+              // CSS hover rather than relying on an unsupported marker mouseover
+              // popup event.
+              const markerHtml =
+                "<div style='position:relative;width:44px;height:56px;cursor:pointer;'>" +
+                "<img src='" + iconUrl + "' style='width:44px;height:56px;display:block;'/>" +
+                "<div style='display:none;position:absolute;left:50%;bottom:58px;transform:translateX(-50%);" +
+                "background:white;border:1px solid #999;border-radius:6px;padding:8px 10px;" +
+                "min-width:190px;box-shadow:0 2px 8px rgba(0,0,0,.25);font:13px Arial,sans-serif;" +
+                "line-height:1.4;z-index:9999;white-space:nowrap;'>" +
+                "<b>" + p.region + "</b><br>" +
+                "<b>" + trend + "</b><br>" +
+                "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
+                "Next-week estimate: <b>" + p.forecast.toFixed(1) + "</b> cases" +
+                "</div>" +
+                "<style>div:hover > div {{ display:block !important; }}</style>" +
+                "</div>";
+
+              new mappls.Marker({{
                 map: map,
                 position: {{
                   lat: p.lat,
                   lng: p.lon
                 }},
-                icon_url: iconUrl,
+                html: markerHtml,
                 fitbounds: false,
-                popupHtml: popupHtml,
-                popupOptions: {{
-                  openPopup: false,
-                  autoClose: true,
-                  maxWidth: 280
-                }}
-              }});
-
-              marker.addListener("mouseover", function () {{
-                marker.setPopup(popupHtml, {{
-                  openPopup: true,
-                  autoClose: true,
-                  maxWidth: 280
-                }});
+                popupHtml: popupHtml
               }});
 
               bounds.push([p.lat, p.lon]);
