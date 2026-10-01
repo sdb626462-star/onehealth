@@ -322,6 +322,118 @@ with st.expander("How should I read this?"):
     )
 
 # ---------------------------------------------------------------------
+# Geographic prediction map
+# ---------------------------------------------------------------------
+st.markdown("### 🌍 Prediction map")
+
+st.caption(
+    "Each marker represents the regional forecast. The marker location is "
+    "the regional capital/representative location; the value is the model's "
+    "next-week estimated reported cases."
+)
+
+MAP_COORDS = {
+    "Budapest": (47.4979, 19.0402),
+    "Baranya": (46.0727, 18.2323),
+    "Bács-Kiskun": (46.9060, 19.6897),
+    "Békés": (46.6736, 21.0877),
+    "Borsod-Abaúj-Zemplén": (48.1035, 20.7784),
+    "Csongrád-Csanád": (46.2530, 20.1414),
+    "Fejér": (47.1860, 18.4221),
+    "Győr-Moson-Sopron": (47.6875, 17.6504),
+    "Hajdú-Bihar": (47.5316, 21.6273),
+    "Heves": (47.9025, 20.3772),
+    "Jász-Nagykun-Szolnok": (47.1747, 20.1760),
+    "Komárom-Esztergom": (47.7432, 18.1191),
+    "Nógrád": (48.1050, 19.8060),
+    "Pest": (47.4970, 19.6100),
+    "Somogy": (46.3594, 17.7968),
+    "Szabolcs-Szatmár-Bereg": (48.0928, 20.9153),
+    "Tolna": (46.3474, 18.7039),
+    "Vas": (47.2307, 16.6218),
+    "Veszprém": (47.0921, 17.9093),
+    "Zala": (46.8417, 16.8416),
+}
+
+map_rows = []
+for _, row in overview.iterrows():
+    lat, lon = MAP_COORDS[row["Region"]]
+    map_rows.append({
+        "region": row["Region"],
+        "lat": float(lat),
+        "lon": float(lon),
+        "forecast": float(row["Forecast next week"]),
+        "reported": float(row["Reported now"]),
+        "trend": row["Trend"],
+    })
+
+try:
+    google_maps_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
+except Exception:
+    google_maps_key = ""
+
+if google_maps_key:
+    import streamlit.components.v1 as components
+
+    map_payload = json.dumps(map_rows).replace("</", "<\\/")
+    google_html = f"""
+    <div id="onehealth-map" style="width:100%;height:560px;border-radius:12px;overflow:hidden;"></div>
+    <script>
+    const predictionData = {map_payload};
+
+    function initOneHealthMap() {{
+      const map = new google.maps.Map(document.getElementById("onehealth-map"), {{
+        center: {{lat: 47.16, lng: 19.50}},
+        zoom: 6.5,
+        mapTypeControl: true,
+        streetViewControl: false,
+        fullscreenControl: true
+      }});
+
+      const info = new google.maps.InfoWindow();
+
+      predictionData.forEach((item) => {{
+        const marker = new google.maps.Marker({{
+          position: {{lat: item.lat, lng: item.lon}},
+          map: map,
+          title: item.region
+        }});
+
+        marker.addListener("click", () => {{
+          info.setContent(
+            "<div style='font-family:Arial,sans-serif;min-width:190px'>" +
+            "<b style='font-size:16px'>" + item.region + "</b><br>" +
+            "Latest reported: <b>" + Math.round(item.reported) + "</b><br>" +
+            "Next-week estimate: <b>" + item.forecast.toFixed(1) + "</b><br>" +
+            "Trend: <b>" + item.trend + "</b>" +
+            "</div>"
+          );
+          info.open({{anchor: marker, map: map}});
+        }});
+      }});
+    }}
+    </script>
+    <script async defer
+      src="https://maps.googleapis.com/maps/api/js?key={google_maps_key}&loading=async&callback=initOneHealthMap">
+    </script>
+    """
+    components.html(google_html, height=580)
+else:
+    st.info(
+        "Google Maps is ready for the deployment. Add a GOOGLE_MAPS_API_KEY "
+        "in Streamlit Secrets to enable the interactive Google map. A basic "
+        "map is shown below until the key is configured."
+    )
+    map_frame = pd.DataFrame(
+        {
+            "lat": [MAP_COORDS[r][0] for r in overview["Region"]],
+            "lon": [MAP_COORDS[r][1] for r in overview["Region"]],
+            "Forecast": overview["Forecast next week"].astype(float).values,
+        }
+    )
+    st.map(map_frame, latitude="lat", longitude="lon", size=30)
+
+# ---------------------------------------------------------------------
 # Regional overview
 # ---------------------------------------------------------------------
 st.markdown("### 🗺️ Regional overview")
