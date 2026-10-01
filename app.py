@@ -451,7 +451,9 @@ else:
               // CSS hover rather than relying on an unsupported marker mouseover
               // popup event.
               const markerHtml =
-                "<div style='position:relative;width:44px;height:56px;cursor:pointer;'>" +
+                "<div style='position:relative;width:44px;height:56px;cursor:pointer;' " +
+                "onmouseenter=\"this.children[1].style.display='block'\" " +
+                "onmouseleave=\"this.children[1].style.display='none'\">" +
                 "<img src='" + iconUrl + "' style='width:44px;height:56px;display:block;'/>" +
                 "<div style='display:none;position:absolute;left:50%;bottom:58px;transform:translateX(-50%);" +
                 "background:white;border:1px solid #999;border-radius:6px;padding:8px 10px;" +
@@ -462,7 +464,6 @@ else:
                 "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
                 "Next-week estimate: <b>" + p.forecast.toFixed(1) + "</b> cases" +
                 "</div>" +
-                "<style>div:hover > div {{ display:block !important; }}</style>" +
                 "</div>";
 
               new mappls.Marker({{
