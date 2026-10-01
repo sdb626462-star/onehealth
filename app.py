@@ -396,46 +396,85 @@ if google_key:
     """
     components.html(html, height=580, scrolling=False)
 else:
-    st.info("Google Maps is ready to use once GOOGLE_MAPS_API_KEY is added to the Streamlit app secrets. A built-in map is shown below meanwhile.")
-    map_df = pd.DataFrame(
-        [
-            {
-                "lat": MAP_COORDS[region][0],
-                "lon": MAP_COORDS[region][1],
-                "region": region,
-                "forecast": float(
-                    overview.loc[overview["Region"] == region, "Forecast next week"].iloc[0]
-                ),
-            }
-            for region in overview["Region"] if region in MAP_COORDS
-        ]
+    st.info(
+        "Google Maps is ready once GOOGLE_MAPS_API_KEY is added to Streamlit Secrets. "
+        "Showing the same predictions on an OpenStreetMap view for now."
     )
 
-    import pydeck as pdk
+    import streamlit.components.v1 as components
 
-    view = pdk.ViewState(
-        latitude=47.1625,
-        longitude=19.5033,
-        zoom=6,
-        pitch=0,
-    )
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=map_df,
-        get_position="[lon, lat]",
-        get_radius=18000,
-        pickable=True,
-        opacity=0.85,
-    )
-    deck = pdk.Deck(
-        layers=[layer],
-        initial_view_state=view,
-        tooltip={
-            "html": "<b>{region}</b><br/>Next-week estimate: {forecast} cases",
-            "style": {"backgroundColor": "#111827", "color": "white"},
-        },
-    )
-    st.pydeck_chart(deck, use_container_width=True)
+    map_points = []
+    for region in overview["Region"]:
+        if region in MAP_COORDS:
+            lat, lon = MAP_COORDS[region]
+            forecast = float(
+                overview.loc[
+                    overview["Region"] == region, "Forecast next week"
+                ].iloc[0]
+            )
+            map_points.append(
+                {
+                    "region": region,
+                    "lat": lat,
+                    "lon": lon,
+                    "forecast": forecast,
+                }
+            )
+
+    points_json = json.dumps(map_points, ensure_ascii=False)
+
+    html = f"""
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <div id="onehealth-map"
+         style="width:100%;height:560px;border-radius:10px;"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      const points = {points_json};
+      const map = L.map("onehealth-map", {{
+          worldCopyJump: false,
+          minZoom: 5,
+          maxZoom: 12
+      }});
+
+      L.tileLayer(
+          "https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+          {{
+              maxZoom: 19,
+              attribution: "&copy; OpenStreetMap contributors"
+          }}
+      ).addTo(map);
+
+      const bounds = [];
+      points.forEach(p => {{
+          const marker = L.circleMarker(
+              [p.lat, p.lon],
+              {{
+                  radius: 8,
+                  fillOpacity: 0.85,
+                  weight: 1
+              }}
+          ).addTo(map);
+
+          marker.bindPopup(
+              "<b>" + p.region + "</b><br>" +
+              "Next-week estimate: " + p.forecast.toFixed(1) + " cases"
+          );
+
+          bounds.push([p.lat, p.lon]);
+      }});
+
+      if (bounds.length) {{
+          map.fitBounds(bounds, {{
+              padding: [35, 35],
+              maxZoom: 7
+          }});
+      }}
+    </script>
+    """
+
+    components.html(html, height=580, scrolling=False)
+
 
 
 # Regional overview
