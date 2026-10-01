@@ -348,57 +348,90 @@ MAP_COORDS = {
 }
 
 st.subheader("🗺️ Prediction map")
-st.caption("Next-week model estimates by region. Marker labels show the predicted reported case count.")
+st.caption(
+    "Mappls prediction view: each marker shows the model's estimated "
+    "reported chickenpox cases for the following week."
+)
 
-google_key = st.secrets.get("GOOGLE_MAPS_API_KEY", None)
-if google_key:
+mappls_key = st.secrets.get("MAPPLS_API_KEY", "")
+
+if mappls_key:
     import streamlit.components.v1 as components
+
     map_points = []
-    for _, row in overview.iterrows():
-        region = row["Region"]
+    for region in overview["Region"]:
         if region in MAP_COORDS:
             lat, lon = MAP_COORDS[region]
-            map_points.append({
-                "region": region,
-                "lat": float(lat),
-                "lon": float(lon),
-                "forecast": float(row["Forecast next week"]),
-            })
+            forecast = float(
+                overview.loc[
+                    overview["Region"] == region, "Forecast next week"
+                ].iloc[0]
+            )
+            map_points.append(
+                {
+                    "region": region,
+                    "lat": float(lat),
+                    "lon": float(lon),
+                    "forecast": forecast,
+                }
+            )
 
     points_json = json.dumps(map_points, ensure_ascii=False)
+
     html = f"""
-    <div id="map" style="width:100%;height:560px;border-radius:10px;"></div>
+    <style>
+      html, body, #onehealth-map {{
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 560px;
+      }}
+    </style>
+
+    <div id="onehealth-map"></div>
+
+    <script src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_key}&callback=initOneHealthMap"></script>
+
     <script>
-    function initOneHealthMap() {{
-        const points = {points_json};
-        const map = new google.maps.Map(document.getElementById("map"), {{
-            center: {{lat: 47.1625, lng: 19.5033}},
-            zoom: 7,
-            mapTypeControl: true,
-            streetViewControl: false,
-            fullscreenControl: true
+      const predictionPoints = {points_json};
+
+      function initOneHealthMap() {{
+        const map = new mappls.Map("onehealth-map", {{
+          center: [47.1625, 19.5033],
+          zoom: 6,
+          zoomControl: true,
+          location: false,
+          fullscreenControl: true
         }});
-        const info = new google.maps.InfoWindow();
-        points.forEach(p => {{
-            const marker = new google.maps.Marker({{
-                position: {{lat: p.lat, lng: p.lon}},
-                map: map,
-                title: p.region + ": " + p.forecast.toFixed(1) + " cases"
+
+        map.addListener("load", function() {{
+          predictionPoints.forEach(function(p) {{
+            new mappls().Marker({{
+              map: map,
+              position: {{
+                lat: p.lat,
+                lng: p.lon
+              }},
+              fitbounds: false,
+              popupHtml:
+                "<div style='min-width:190px'>" +
+                "<b>" + p.region + "</b><br>" +
+                "Next-week estimate: <b>" +
+                p.forecast.toFixed(1) +
+                " cases</b></div>"
             }});
-            marker.addListener("click", () => {{
-                info.setContent("<b>" + p.region + "</b><br>Next-week estimate: " + p.forecast.toFixed(1) + " cases");
-                info.open(map, marker);
-            }});
+          }});
         }});
-    }}
+      }}
     </script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key={google_key}&callback=initOneHealthMap"></script>
     """
+
     components.html(html, height=580, scrolling=False)
+
 else:
     st.info(
-        "Google Maps is ready once GOOGLE_MAPS_API_KEY is added to Streamlit Secrets. "
-        "Showing the same predictions on an OpenStreetMap view for now."
+        "Add MAPPLS_API_KEY to Streamlit Secrets to enable the Mappls "
+        "(MapmyIndia) map. A fallback map is shown below meanwhile."
     )
 
     import streamlit.components.v1 as components
@@ -426,12 +459,12 @@ else:
     html = f"""
     <link rel="stylesheet"
           href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <div id="onehealth-map"
+    <div id="onehealth-fallback-map"
          style="width:100%;height:560px;border-radius:10px;"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
       const points = {points_json};
-      const map = L.map("onehealth-map", {{
+      const map = L.map("onehealth-fallback-map", {{
           worldCopyJump: false,
           minZoom: 5,
           maxZoom: 12
@@ -446,7 +479,8 @@ else:
       ).addTo(map);
 
       const bounds = [];
-      points.forEach(p => {{
+
+      points.forEach(function(p) {{
           const marker = L.circleMarker(
               [p.lat, p.lon],
               {{
@@ -458,7 +492,8 @@ else:
 
           marker.bindPopup(
               "<b>" + p.region + "</b><br>" +
-              "Next-week estimate: " + p.forecast.toFixed(1) + " cases"
+              "Next-week estimate: " +
+              p.forecast.toFixed(1) + " cases"
           );
 
           bounds.push([p.lat, p.lon]);
