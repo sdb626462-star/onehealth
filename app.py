@@ -349,193 +349,104 @@ MAP_COORDS = {
 
 st.subheader("🗺️ Prediction map")
 st.caption(
-    "Mappls prediction view: each marker shows the model's estimated "
-    "reported chickenpox cases for the following week."
+    "Interactive map of the model's next-week chickenpox predictions "
+    "across the 20 regions."
 )
 
-mappls_key = st.secrets.get("MAPPLS_API_KEY", "")
+import streamlit.components.v1 as components
 
-if mappls_key:
-    import streamlit.components.v1 as components
+map_points = []
+for region in overview["Region"]:
+    if region in MAP_COORDS:
+        lat, lon = MAP_COORDS[region]
+        forecast = float(
+            overview.loc[
+                overview["Region"] == region, "Forecast next week"
+            ].iloc[0]
+        )
+        map_points.append(
+            {
+                "region": region,
+                "lat": float(lat),
+                "lon": float(lon),
+                "forecast": forecast,
+            }
+        )
 
-    map_points = []
-    for region in overview["Region"]:
-        if region in MAP_COORDS:
-            lat, lon = MAP_COORDS[region]
-            forecast = float(
-                overview.loc[
-                    overview["Region"] == region, "Forecast next week"
-                ].iloc[0]
-            )
-            map_points.append(
-                {
-                    "region": region,
-                    "lat": float(lat),
-                    "lon": float(lon),
-                    "forecast": forecast,
-                }
-            )
+points_json = json.dumps(map_points, ensure_ascii=False)
 
-    points_json = json.dumps(map_points, ensure_ascii=False)
+html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body, #onehealth-map {{
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 560px;
+      overflow: hidden;
+    }}
+  </style>
+</head>
+<body>
+  <div id="onehealth-map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const points = {points_json};
 
-    html = f"""
-    <!doctype html>
-    <html>
-    <head>
-      <meta name="viewport" content="initial-scale=1.0">
-      <meta charset="utf-8">
-      <style>
-        html, body, #map {{
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 560px;
-          overflow: hidden;
+    const map = L.map("onehealth-map", {{
+      worldCopyJump: false,
+      minZoom: 5,
+      maxZoom: 12
+    }});
+
+    L.tileLayer(
+      "https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+      {{
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }}
+    ).addTo(map);
+
+    const bounds = [];
+
+    points.forEach(function(p) {{
+      const marker = L.circleMarker(
+        [p.lat, p.lon],
+        {{
+          radius: 9,
+          fillOpacity: 0.85,
+          weight: 2
         }}
-        #status {{
-          position: absolute;
-          z-index: 10;
-          top: 10px;
-          left: 10px;
-          background: white;
-          color: #333;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font: 14px Arial;
-        }}
-      </style>
-      <script>
-        var predictionPoints = {points_json};
-        var oneHealthMap;
-
-        function initOneHealthMap() {{
-          document.getElementById("status").style.display = "none";
-
-          oneHealthMap = new mappls.Map("map", {{
-            center: [47.1625, 19.5033],
-            zoom: 6,
-            zoomControl: true,
-            fullscreenControl: true
-          }});
-
-          oneHealthMap.addListener("load", function() {{
-            predictionPoints.forEach(function(p) {{
-              new mappls.Marker({{
-                map: oneHealthMap,
-                position: {{
-                  lat: p.lat,
-                  lng: p.lon
-                }},
-                fitbounds: false,
-                icon_url: "https://apis.mappls.com/map_v3/1.png"
-              }});
-            }});
-          }});
-        }}
-
-        window.setTimeout(function() {{
-          var status = document.getElementById("status");
-          if (status && status.style.display !== "none") {{
-            status.innerHTML =
-              "Mappls did not initialize. Check that the Mappls Web Maps token is valid and enabled.";
-          }}
-        }}, 10000);
-      </script>
-      <script
-        src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_key}&callback=initOneHealthMap"
-        defer>
-      </script>
-    </head>
-    <body>
-      <div id="status">Loading Mappls map…</div>
-      <div id="map"></div>
-    </body>
-    </html>
-    """
-
-    components.html(html, height=580, scrolling=False)
-
-else:
-    st.info(
-        "Add MAPPLS_API_KEY to Streamlit Secrets to enable the Mappls "
-        "(MapmyIndia) map. A fallback map is shown below meanwhile."
-    )
-
-    import streamlit.components.v1 as components
-
-    map_points = []
-    for region in overview["Region"]:
-        if region in MAP_COORDS:
-            lat, lon = MAP_COORDS[region]
-            forecast = float(
-                overview.loc[
-                    overview["Region"] == region, "Forecast next week"
-                ].iloc[0]
-            )
-            map_points.append(
-                {
-                    "region": region,
-                    "lat": lat,
-                    "lon": lon,
-                    "forecast": forecast,
-                }
-            )
-
-    points_json = json.dumps(map_points, ensure_ascii=False)
-
-    html = f"""
-    <link rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <div id="onehealth-fallback-map"
-         style="width:100%;height:560px;border-radius:10px;"></div>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-      const points = {points_json};
-      const map = L.map("onehealth-fallback-map", {{
-          worldCopyJump: false,
-          minZoom: 5,
-          maxZoom: 12
-      }});
-
-      L.tileLayer(
-          "https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
-          {{
-              maxZoom: 19,
-              attribution: "&copy; OpenStreetMap contributors"
-          }}
       ).addTo(map);
 
-      const bounds = [];
+      marker.bindPopup(
+        "<b>" + p.region + "</b><br>" +
+        "Next-week estimate: <b>" +
+        p.forecast.toFixed(1) +
+        " cases</b>"
+      );
 
-      points.forEach(function(p) {{
-          const marker = L.circleMarker(
-              [p.lat, p.lon],
-              {{
-                  radius: 8,
-                  fillOpacity: 0.85,
-                  weight: 1
-              }}
-          ).addTo(map);
+      bounds.push([p.lat, p.lon]);
+    }});
 
-          marker.bindPopup(
-              "<b>" + p.region + "</b><br>" +
-              "Next-week estimate: " +
-              p.forecast.toFixed(1) + " cases"
-          );
-
-          bounds.push([p.lat, p.lon]);
+    if (bounds.length) {{
+      map.fitBounds(bounds, {{
+        padding: [30, 30],
+        maxZoom: 7
       }});
+    }}
+  </script>
+</body>
+</html>
+"""
 
-      if (bounds.length) {{
-          map.fitBounds(bounds, {{
-              padding: [35, 35],
-              maxZoom: 7
-          }});
-      }}
-    </script>
-    """
-
-    components.html(html, height=580, scrolling=False)
+components.html(html, height=580, scrolling=False)
 
 
 
