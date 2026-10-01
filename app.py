@@ -439,7 +439,15 @@ else:
                 "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/map_icons/" +
                 colorName + ".svg";
 
-              new mappls.Marker({{
+              const popupHtml =
+                "<div style='min-width:200px;font-family:Arial,sans-serif'>" +
+                "<b>" + p.region + "</b><br>" +
+                "<b>" + trend + "</b><br>" +
+                "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
+                "Next-week estimate: <b>" + p.forecast.toFixed(1) +
+                "</b> cases</div>";
+
+              const marker = new mappls.Marker({{
                 map: map,
                 position: {{
                   lat: p.lat,
@@ -447,13 +455,20 @@ else:
                 }},
                 icon_url: iconUrl,
                 fitbounds: false,
-                popupHtml:
-                  "<div style='min-width:200px;font-family:Arial,sans-serif'>" +
-                  "<b>" + p.region + "</b><br>" +
-                  "<b>" + trend + "</b><br>" +
-                  "Latest reported: <b>" + p.current.toFixed(0) + "</b><br>" +
-                  "Next-week estimate: <b>" + p.forecast.toFixed(1) +
-                  "</b> cases</div>"
+                popupHtml: popupHtml,
+                popupOptions: {{
+                  openPopup: false,
+                  autoClose: true,
+                  maxWidth: 280
+                }}
+              }});
+
+              marker.addListener("mouseover", function () {{
+                marker.setPopup(popupHtml, {{
+                  openPopup: true,
+                  autoClose: true,
+                  maxWidth: 280
+                }});
               }});
 
               bounds.push([p.lat, p.lon]);
