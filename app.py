@@ -450,6 +450,55 @@ components.html(html, height=580, scrolling=False)
 
 
 
+# ---------------------------------------------------------------------
+# Model comparison
+# ---------------------------------------------------------------------
+st.markdown("### 🤖 Model comparison")
+
+st.caption(
+    "Independent benchmark on the same 4-week lookback, 20-region dataset "
+    "and held-out test period. The deployed forecast remains ST-GNN."
+)
+
+stgnn_mae = float(metadata.get("mae_cases", 17.6115))
+stgnn_rmse = float(metadata.get("rmse_cases", 28.3550))
+stgnn_r2 = float(metadata.get("r2_cases", 0.4804))
+
+comparison = pd.DataFrame(
+    [
+        {
+            "Model": "ST-GNN (deployed)",
+            "MAE": stgnn_mae,
+            "RMSE": stgnn_rmse,
+            "R²": stgnn_r2,
+        },
+        {
+            "Model": "LSTM baseline",
+            "MAE": 26.5535,
+            "RMSE": 35.4443,
+            "R²": 0.1881,
+        },
+    ]
+)
+
+st.dataframe(
+    comparison.style.format(
+        {"MAE": "{:.2f}", "RMSE": "{:.2f}", "R²": "{:.4f}"}
+    ),
+    use_container_width=True,
+    hide_index=True,
+)
+
+with st.expander("How was the LSTM benchmark evaluated?"):
+    st.write(
+        "The LSTM uses the same four-week historical lookback and the same "
+        "20 regional disease-count series as the ST-GNN. It was evaluated "
+        "on the same chronological held-out test period using MAE, RMSE "
+        "and R². It is included as a baseline comparison and is not used "
+        "to generate the dashboard's current forecast."
+    )
+
+
 # Regional overview
 # ---------------------------------------------------------------------
 st.markdown("### 🗺️ Regional overview")
