@@ -467,6 +467,42 @@ if not increasing.empty:
         )
 
 # ---------------------------------------------------------------------
+# Model comparison
+# ---------------------------------------------------------------------
+st.markdown("### 🤖 Model comparison")
+
+comparison = pd.DataFrame([
+    {
+        "Model": "ST-GNN (deployed)",
+        "MAE (cases)": float(metadata["mae_cases"]),
+        "RMSE (cases)": float(metadata["rmse_cases"]),
+        "R²": float(metadata["r2_cases"]),
+    },
+    {
+        "Model": "LSTM baseline",
+        "MAE (cases)": 26.5535,
+        "RMSE (cases)": 35.4443,
+        "R²": 0.1881,
+    },
+])
+
+st.dataframe(
+    comparison.style.format({
+        "MAE (cases)": "{:.4f}",
+        "RMSE (cases)": "{:.4f}",
+        "R²": "{:.4f}",
+    }),
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.caption(
+    "The LSTM is an independent baseline trained with the same 4-week "
+    "lookback, 20-region dataset and 413/105 train-test split. The current "
+    "ST-GNN remains the deployed forecasting model."
+)
+
+# ---------------------------------------------------------------------
 # Minimal explanation of AI
 # ---------------------------------------------------------------------
 st.markdown("### ℹ️ How was this estimate made?")
