@@ -398,10 +398,44 @@ if google_key:
 else:
     st.info("Google Maps is ready to use once GOOGLE_MAPS_API_KEY is added to the Streamlit app secrets. A built-in map is shown below meanwhile.")
     map_df = pd.DataFrame(
-        [{"lat": MAP_COORDS[region][0], "lon": MAP_COORDS[region][1], "region": region}
-         for region in overview["Region"] if region in MAP_COORDS]
-    ).set_index("region")
-    st.map(map_df, latitude="lat", longitude="lon", size=20)
+        [
+            {
+                "lat": MAP_COORDS[region][0],
+                "lon": MAP_COORDS[region][1],
+                "region": region,
+                "forecast": float(
+                    overview.loc[overview["Region"] == region, "Forecast next week"].iloc[0]
+                ),
+            }
+            for region in overview["Region"] if region in MAP_COORDS
+        ]
+    )
+
+    import pydeck as pdk
+
+    view = pdk.ViewState(
+        latitude=47.1625,
+        longitude=19.5033,
+        zoom=6,
+        pitch=0,
+    )
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=map_df,
+        get_position="[lon, lat]",
+        get_radius=18000,
+        pickable=True,
+        opacity=0.85,
+    )
+    deck = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view,
+        tooltip={
+            "html": "<b>{region}</b><br/>Next-week estimate: {forecast} cases",
+            "style": {"backgroundColor": "#111827", "color": "white"},
+        },
+    )
+    st.pydeck_chart(deck, use_container_width=True)
 
 
 # Regional overview
