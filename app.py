@@ -411,40 +411,39 @@ else:
           }});
 
           map.addListener("load", function() {{
-            const bounds = [];
-
-            points.forEach(function(p) {{
-              const marker = new mappls.Marker({{
-                map: map,
-                position: {{
-                  lat: p.lat,
-                  lng: p.lon
+            const features = points.map(function(p) {{
+              return {{
+                type: "Feature",
+                properties: {{
+                  htmlPopup:
+                    "<div style='min-width:180px'>" +
+                    "<b>" + p.region + "</b><br>" +
+                    "Next-week estimate: <b>" +
+                    p.forecast.toFixed(1) +
+                    " cases</b></div>"
                 }},
-                fitbounds: false,
-                popupHtml:
-                  "<div style='min-width:180px'>" +
-                  "<b>" + p.region + "</b><br>" +
-                  "Next-week estimate: <b>" +
-                  p.forecast.toFixed(1) +
-                  " cases</b></div>"
-              }});
-
-              if (marker && marker.addListener) {{
-                marker.addListener("click", function() {{
-                  if (marker.openPopup) {{
-                    marker.openPopup();
-                  }}
-                }});
-              }}
-
-              bounds.push([p.lat, p.lon]);
+                geometry: {{
+                  type: "Point",
+                  coordinates: [p.lat, p.lon]
+                }}
+              }};
             }});
 
-            if (bounds.length && map.fitBounds) {{
-              map.fitBounds(bounds);
-            }}
-          }});
-        }}
+            new mappls.Marker({{
+              map: map,
+              position: {{
+                id: "onehealth-predictions",
+                type: "FeatureCollection",
+                features: features
+              }},
+              icon_url: "https://apis.mappls.com/map_v3/1.png",
+              clusters: false,
+              fitbounds: true,
+              fitboundOptions: {{
+                padding: 80
+              }}
+            }});
+          }});        }}
       </script>
       <script
         src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_token}&callback=initMap1"
