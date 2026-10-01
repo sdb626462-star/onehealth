@@ -390,13 +390,12 @@ if mappls_key:
 
     <div id="onehealth-map"></div>
 
-    <script src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token={mappls_key}&callback=initOneHealthMap"></script>
-
     <script>
-      const predictionPoints = {points_json};
+      var oneHealthMap;
+      var predictionPoints = {points_json};
 
       function initOneHealthMap() {{
-        const map = new mappls.Map("onehealth-map", {{
+        oneHealthMap = new mappls.Map("onehealth-map", {{
           center: [47.1625, 19.5033],
           zoom: 6,
           zoomControl: true,
@@ -404,25 +403,22 @@ if mappls_key:
           fullscreenControl: true
         }});
 
-        map.addListener("load", function() {{
-          predictionPoints.forEach(function(p) {{
-            new mappls().Marker({{
-              map: map,
-              position: {{
-                lat: p.lat,
-                lng: p.lon
-              }},
-              fitbounds: false,
-              popupHtml:
-                "<div style='min-width:190px'>" +
-                "<b>" + p.region + "</b><br>" +
-                "Next-week estimate: <b>" +
-                p.forecast.toFixed(1) +
-                " cases</b></div>"
-            }});
+        predictionPoints.forEach(function(p) {{
+          new mappls.Marker({{
+            map: oneHealthMap,
+            position: {{
+              lat: p.lat,
+              lng: p.lon
+            }},
+            fitbounds: false
           }});
         }});
       }}
+    </script>
+
+    <script
+      src="https://apis.mappls.com/advancedmaps/api/{mappls_key}/map_sdk?layer=vector&v=3.0&callback=initOneHealthMap"
+      defer async>
     </script>
     """
 
