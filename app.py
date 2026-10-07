@@ -16,6 +16,10 @@ st.set_page_config(
 RAW_MODEL_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/stgnn_disease_only_seed42.npz"
 ADJ_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/graph_adjacency.npy"
 METADATA_URL = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/model_artifacts/metadata.json"
+EPICLIM_URLS = [
+    "https://zenodo.org/api/records/14580510/files/Final_data.csv/content",
+    "https://zenodo.org/records/14580510/files/Final_data.csv?download=1",
+]
 
 REGIONS = [
     "Budapest", "Baranya", "Bács-Kiskun", "Békés",
@@ -72,6 +76,59 @@ def load_model_artifacts():
     with urllib.request.urlopen(METADATA_URL, timeout=30) as response:
         metadata = json.loads(response.read().decode("utf-8"))
     return weights, metadata, adjacency
+
+
+@st.cache_data(ttl=86400)
+def load_epiclim_west_bengal():
+    last_error = None
+    for url in EPICLIM_URLS:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "OneHealth-Streamlit"},
+            )
+            with urllib.request.urlopen(req, timeout=45) as response:
+                data = response.read()
+
+            df = pd.read_csv(io.BytesIO(data))
+            df.columns = [str(col).strip() for col in df.columns]
+
+            required = {
+                "state_ut", "district", "Disease", "Cases", "Deaths",
+                "day", "mon", "year", "Latitude", "Longitude",
+                "preci", "LAI", "Temp",
+            }
+            missing = required.difference(df.columns)
+            if missing:
+                raise ValueError(
+                    "EpiClim is missing columns: " + ", ".join(sorted(missing))
+                )
+
+            df["state_ut"] = df["state_ut"].astype(str).str.strip()
+            wb = df[df["state_ut"].str.casefold().eq("west bengal")].copy()
+
+            if wb.empty:
+                raise ValueError("No West Bengal records found in EpiClim.")
+
+            for col in ["Cases", "Deaths", "Latitude", "Longitude", "preci", "LAI", "Temp"]:
+                wb[col] = pd.to_numeric(wb[col], errors="coerce").fillna(0)
+
+            wb["Date"] = pd.to_datetime(
+                dict(
+                    year=pd.to_numeric(wb["year"], errors="coerce"),
+                    month=pd.to_numeric(wb["mon"], errors="coerce"),
+                    day=pd.to_numeric(wb["day"], errors="coerce"),
+                ),
+                errors="coerce",
+            )
+            return wb.sort_values("Date")
+
+        except Exception as exc:
+            last_error = exc
+
+    raise RuntimeError(
+        "Unable to load the public EpiClim dataset. " + str(last_error)
+    )
 
 
 def sigmoid(x):
@@ -173,10 +230,136 @@ total_change = (
 )
 
 # ---------------------------------------------------------------------
+# West Bengal district surveillance — EpiClim
+# ---------------------------------------------------------------------
+st.title("🩺 OneHealth")
+st.subheader("West Bengal District Epidemiological Surveillance")
+
+st.markdown(
+    "**Primary geographic focus:** West Bengal districts. "
+    "The EpiClim dataset provides weekly district-level disease and "
+    "climate observations for the India-facing epidemiological analysis."
+)
+
+try:
+    wb = load_epiclim_west_bengal()
+
+    wb_cases = float(wb["Cases"].sum())
+    wb_deaths = float(wb["Deaths"].sum())
+    wb_districts = int(wb["district"].nunique())
+    wb_diseases = int(wb["Disease"].nunique())
+
+    st.markdown("### 🇮🇳 West Bengal at a glance")
+    w1, w2, w3, w4 = st.columns(4)
+    w1.metric("Districts represented", f"{wb_districts}")
+    w2.metric("EpiClim records", f"{len(wb):,}")
+    w3.metric("Reported cases", f"{wb_cases:,.0f}")
+    w4.metric("Disease categories", f"{wb_diseases}")
+
+    district_totals = (
+        wb.groupby("district", as_index=False)
+        .agg(
+            Cases=("Cases", "sum"),
+            Deaths=("Deaths", "sum"),
+            Latitude=("Latitude", "mean"),
+            Longitude=("Longitude", "mean"),
+        )
+        .sort_values("Cases", ascending=False)
+    )
+
+    st.markdown("### 📍 West Bengal district overview")
+    st.dataframe(
+        district_totals.assign(
+            Cases=district_totals["Cases"].round(0).astype(int),
+            Deaths=district_totals["Deaths"].round(0).astype(int),
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    selected_district = st.selectbox(
+        "Select a West Bengal district",
+        district_totals["district"].tolist(),
+        key="wb_district",
+    )
+
+    ddf = wb[wb["district"] == selected_district].copy()
+    disease_totals = (
+        ddf.groupby("Disease", as_index=False)["Cases"]
+        .sum()
+        .sort_values("Cases", ascending=False)
+    )
+
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Reported cases", f"{ddf['Cases'].sum():,.0f}")
+    d2.metric("Reported deaths", f"{ddf['Deaths'].sum():,.0f}")
+    d3.metric("Disease categories", f"{ddf['Disease'].nunique()}")
+
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown(f"#### Disease burden — {selected_district}")
+        fig_d, ax_d = plt.subplots(figsize=(7, 4))
+        top_diseases = disease_totals.head(8).sort_values("Cases")
+        ax_d.barh(top_diseases["Disease"], top_diseases["Cases"])
+        ax_d.set_xlabel("Reported cases")
+        ax_d.set_title(f"Top disease categories in {selected_district}")
+        ax_d.grid(axis="x", alpha=0.2)
+        st.pyplot(fig_d, use_container_width=True)
+        plt.close(fig_d)
+
+    with right:
+        st.markdown(f"#### Weekly reported activity — {selected_district}")
+        weekly = (
+            ddf.dropna(subset=["Date"])
+            .groupby("Date", as_index=False)["Cases"]
+            .sum()
+            .sort_values("Date")
+        )
+        fig_t, ax_t = plt.subplots(figsize=(7, 4))
+        ax_t.plot(weekly["Date"], weekly["Cases"], marker="o", markersize=2)
+        ax_t.set_ylabel("Reported cases")
+        ax_t.set_xlabel("Date")
+        ax_t.set_title("Weekly reported cases")
+        ax_t.grid(alpha=0.2)
+        fig_t.autofmt_xdate()
+        st.pyplot(fig_t, use_container_width=True)
+        plt.close(fig_t)
+
+    st.markdown(f"#### 🌦️ Climate context — {selected_district}")
+    climate = pd.DataFrame({
+        "Metric": ["Mean temperature", "Mean precipitation", "Mean LAI"],
+        "Value": [
+            ddf["Temp"].mean(),
+            ddf["preci"].mean(),
+            ddf["LAI"].mean(),
+        ],
+    })
+    st.dataframe(
+        climate.style.format({"Value": "{:.2f}"}),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.info(
+        "EpiClim is an independent West Bengal district-level epidemiological "
+        "and climate analysis. It is not currently used as an input to the "
+        "20-region Hungarian ST-GNN forecast shown below."
+    )
+
+except Exception as exc:
+    st.warning(
+        "The West Bengal EpiClim section could not be loaded right now. "
+        f"Details: {exc}"
+    )
+
+st.markdown("---")
+
+# ---------------------------------------------------------------------
 # Doctor-first landing page
 # ---------------------------------------------------------------------
 st.title("🩺 OneHealth")
-st.subheader("Chickenpox Surveillance Dashboard")
+st.subheader("Validated ST-GNN Forecasting Benchmark — Hungary")
 
 st.markdown(
     "**At a glance:** latest reported chickenpox activity and the model's "
@@ -185,7 +368,7 @@ st.markdown(
 
 st.success("Forecast available")
 
-st.markdown("### What is happening?")
+st.markdown("### 🇭🇺 What is the validated forecasting benchmark showing?")
 
 a, b, c = st.columns(3)
 a.metric("Reported cases — latest week", f"{total_now:.0f}")
