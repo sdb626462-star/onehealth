@@ -92,13 +92,13 @@ def dcmg_weights(case_vec, temp_vec, base_A):
     x=np.asarray(case_vec,float)
     z=(x-x.mean())/(x.std()+1e-6)
     pressure=1/(1+np.exp(-np.clip(z,-6,6)))
-    W=base_A.copy()
-    for i in range(len(x)):
-        for j in range(len(x)):
-            if W[i,j]>0:
-                # Source pressure drives outgoing transmission potential.
-                W[i,j] *= (0.25 + 0.75*pressure[i])
-    # Row-normalize for stable message passing.
+    W=np.zeros_like(base_A)
+    for source in range(len(x)):
+        for target in range(len(x)):
+            if base_A[source,target]>0:
+                # Matrix convention: W[target, source] = source -> target.
+                W[target,source] = base_A[source,target] * (0.25 + 0.75*pressure[source])
+    # Normalize incoming weights at each target.
     rs=W.sum(axis=1,keepdims=True)+1e-8
     W=W/rs
     return W
@@ -189,7 +189,7 @@ def train_model(X,Y,W,tr,va,physics=False,seed=42):
             # Discrete graph-transmission balance:
             # predicted change should be consistent with incoming lagged source pressure.
             last_cases=Xtr[:,:,-1,0]
-            incoming=torch.bmm(Atr[:,-1].transpose(1,2), torch.relu(last_cases.unsqueeze(-1))).squeeze(-1)
+            incoming=torch.bmm(Atr[:,-1], torch.relu(last_cases.unsqueeze(-1))).squeeze(-1)
             delta=pred-last_cases
             balance=((delta-(0.15*incoming-0.10*last_cases))**2).mean()
             nonneg=torch.relu(-pred).pow(2).mean()
@@ -268,17 +268,16 @@ def main():
                 for ti,date in enumerate(target_dates[test_slice]):
                     for ni,d in enumerate(districts):
                         preds_store.append({"date":date,"district":d,"actual_cases":float(actual[ti,ni]),"predicted_cases":float(pred[ti,ni]),"model":label})
-        # aggregate
-        for k in ["MAE","RMSE","R2"]:
-            arrv=np.array([v[k] for v in vals])
-            results.append({"model":label,"MAE":float(arrv.mean()),"RMSE":float(arrv.mean() if k=="RMSE" else 0),"R2":float(arrv.mean())})
-        # replace aggregate fields correctly
-        results[-1]["MAE"]=float(np.mean([v["MAE"] for v in vals]))
-        results[-1]["RMSE"]=float(np.mean([v["RMSE"] for v in vals]))
-        results[-1]["R2"]=float(np.mean([v["R2"] for v in vals]))
-        results[-1]["MAE_std"]=float(np.std([v["MAE"] for v in vals]))
-        results[-1]["RMSE_std"]=float(np.std([v["RMSE"] for v in vals]))
-        results[-1]["R2_std"]=float(np.std([v["R2"] for v in vals]))
+        # five-seed aggregate
+        results.append({
+            "model":label,
+            "MAE":float(np.mean([v["MAE"] for v in vals])),
+            "RMSE":float(np.mean([v["RMSE"] for v in vals])),
+            "R2":float(np.mean([v["R2"] for v in vals])),
+            "MAE_std":float(np.std([v["MAE"] for v in vals])),
+            "RMSE_std":float(np.std([v["RMSE"] for v in vals])),
+            "R2_std":float(np.std([v["R2"] for v in vals]))
+        })
 
     pd.DataFrame(preds_store).to_csv(os.path.join(OUT,"wb_test_predictions_seed42.csv"),index=False)
     pd.DataFrame(results).to_csv(os.path.join(OUT,"wb_model_results.csv"),index=False)
