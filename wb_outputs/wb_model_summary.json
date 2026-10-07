@@ -1,0 +1,62 @@
+{
+  "target": "Dengue",
+  "state": "West Bengal",
+  "source": "EpiClim Zenodo 10.5281/zenodo.14580510",
+  "raw_west_bengal_dengue_rows": 150,
+  "districts": 18,
+  "district_names": [
+    "Bankura",
+    "Bardhaman",
+    "Birbhum",
+    "Burdwan",
+    "Dakshin Dinajpur",
+    "Darjeeling, Jalpaiguri",
+    "Hooghly",
+    "Howrah",
+    "Jalpaiguri",
+    "Malda",
+    "Murshidabad",
+    "Nadia",
+    "North 24 Parganas",
+    "Paschim Medinipur",
+    "Purba Medinipur",
+    "Purulia",
+    "South 24 Parganas",
+    "Uttar Dinajpur"
+  ],
+  "weeks": 100,
+  "supervised_samples": 96,
+  "lookback_weeks": 4,
+  "train_samples": 67,
+  "validation_samples": 14,
+  "test_samples": 15,
+  "static_graph_directed_edges": 88,
+  "dcmg": "Dynamic lagged transmission-pressure graph on a distance-decay mobility proxy; weights use source incidence at t-1 only.",
+  "physics": "Discrete graph-transmission balance penalty plus non-negativity penalty; this is not a full SIR parameter-identification model.",
+  "results": [
+    {
+      "model": "Persistence",
+      "MAE": 13797.369694710063,
+      "RMSE": 54645.058517940946,
+      "R2": -1.0295956876234746
+    },
+    {
+      "model": "DCMG ST-GNN",
+      "MAE": 63.83154854642521,
+      "RMSE": 140.83240206566455,
+      "R2": -0.011800749070768024,
+      "MAE_std": 9.046274038542352,
+      "RMSE_std": 0.7410752663085661,
+      "R2_std": 0.010660450208270859
+    },
+    {
+      "model": "Physics-Informed DCMG ST-GNN",
+      "MAE": 63.67335654487279,
+      "RMSE": 140.8106781763607,
+      "R2": -0.011489847106273965,
+      "MAE_std": 9.048393779856989,
+      "RMSE_std": 0.7569472748431396,
+      "R2_std": 0.010887547372648689
+    }
+  ]
+}
