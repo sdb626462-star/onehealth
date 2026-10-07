@@ -271,7 +271,6 @@ def main():
 
     model_specs=[("Static ST-GNN",W_static,False),("DCMG ST-GNN",W,False),("Physics-Informed DCMG ST-GNN",W,True)]
     for label,graph_weights,physics in model_specs:
-        label="DCMG ST-GNN" if not physics else "Physics-Informed DCMG ST-GNN"
         vals=[]
         for seed in SEEDS:
             model,epochs=train_model(Xn,Yn,graph_weights,tr,va,physics,seed)
