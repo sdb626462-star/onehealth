@@ -31,14 +31,30 @@
   "validation_samples": 14,
   "test_samples": 15,
   "static_graph_directed_edges": 88,
+  "static_graph": "4-nearest-neighbour geographic distance-decay graph from EpiClim district coordinates.",
   "dcmg": "Dynamic lagged transmission-pressure graph on a distance-decay mobility proxy; weights use source incidence at t-1 only.",
   "physics": "Discrete graph-transmission balance penalty plus non-negativity penalty; this is not a full SIR parameter-identification model.",
   "results": [
     {
       "model": "Persistence",
-      "MAE": 13797.369694710063,
-      "RMSE": 54645.058517940946,
+      "MAE": 50.36296296296296,
+      "RMSE": 199.4646167452597,
       "R2": -1.0295956876234746
+    },
+    {
+      "model": "4-week mean",
+      "MAE": 49.36574074074074,
+      "RMSE": 154.07772284118792,
+      "R2": -0.21103724594194762
+    },
+    {
+      "model": "DCMG ST-GNN",
+      "MAE": 61.27559349800741,
+      "RMSE": 141.07537872289078,
+      "R2": -0.015309946445202805,
+      "MAE_std": 8.496286200373204,
+      "RMSE_std": 0.918109459136845,
+      "R2_std": 0.013224487818992487
     },
     {
       "model": "DCMG ST-GNN",
