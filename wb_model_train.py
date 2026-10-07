@@ -139,6 +139,8 @@ def norm_split(X,Y,W,dates):
     # Keep case scale separate for stable target learning.
     ymu=Y[:tr].mean(); ysd=Y[:tr].std()+1e-6
     Yn=(Y-ymu)/ysd
+    Xn=np.nan_to_num(Xn,nan=0.0,posinf=0.0,neginf=0.0)
+    Yn=np.nan_to_num(Yn,nan=0.0,posinf=0.0,neginf=0.0)
     return Xn,Yn,(mu,sd,ymu,ysd),tr,va
 
 class STGNN(nn.Module):
@@ -173,7 +175,7 @@ def train_model(X,Y,W,tr,va,physics=False,seed=42):
     seed_all(seed)
     device=torch.device("cpu")
     model=STGNN().to(device)
-    opt=torch.optim.Adam(model.parameters(),lr=1e-3,weight_decay=1e-4)
+    opt=torch.optim.Adam(model.parameters(),lr=5e-4,weight_decay=1e-4)
     Xtr=torch.tensor(X[:tr],dtype=torch.float32,device=device)
     Ytr=torch.tensor(Y[:tr],dtype=torch.float32,device=device)
     Atr=torch.tensor(W[:tr],dtype=torch.float32,device=device)
@@ -191,18 +193,20 @@ def train_model(X,Y,W,tr,va,physics=False,seed=42):
             last_cases=Xtr[:,:,-1,0]
             incoming=torch.bmm(Atr[:,-1], torch.relu(last_cases.unsqueeze(-1))).squeeze(-1)
             delta=pred-last_cases
-            balance=((delta-(0.15*incoming-0.10*last_cases))**2).mean()
+            balance=((delta-(0.02*incoming-0.02*last_cases))**2).mean()
             nonneg=torch.relu(-pred).pow(2).mean()
-            loss=loss+0.08*balance+0.02*nonneg
+            loss=loss+0.01*balance+0.005*nonneg
         loss.backward(); torch.nn.utils.clip_grad_norm_(model.parameters(),1.0); opt.step()
         model.eval()
         with torch.no_grad():
             pv=model(Xva,Ava); vl=((pv-Yva)**2).mean().item()
-        if vl<bestv-1e-5:
+        if np.isfinite(vl) and vl<bestv-1e-5:
             bestv=vl; best={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}; wait=0
         else:
             wait+=1
             if wait>=patience: break
+    if best is None:
+        best={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
     model.load_state_dict(best)
     return model,epoch+1
 
@@ -226,6 +230,7 @@ def main():
     X,Y,W,target_dates=make_samples(arr,cases,dates,A)
     Xn,Yn,norm,tr,va=norm_split(X,Y,W,target_dates)
     mu,sd,ymu,ysd=norm
+    print("WB DATA:", {"rows":len(wb),"districts":len(districts),"weeks":len(dates),"samples":len(X),"X_finite":bool(np.isfinite(Xn).all()),"Y_finite":bool(np.isfinite(Yn).all()),"W_finite":bool(np.isfinite(W).all())})
 
     panel.to_csv(os.path.join(OUT,"wb_dengue_district_week_panel.csv"),index=False)
     pd.DataFrame({"district":districts,"Latitude":coords.Latitude.values,"Longitude":coords.Longitude.values}).to_csv(os.path.join(OUT,"wb_districts.csv"),index=False)
