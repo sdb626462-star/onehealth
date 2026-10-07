@@ -253,21 +253,32 @@ def main():
     results=[]
     preds_store=[]
 
-    # Persistence baseline
+    # Baselines
     actual=Y[test_slice]
-    persist=X[test_slice,-1,:,0]*ysd+ymu
-    act=actual*ysd+ymu
+    act=actual
+    persist=X[test_slice,-1,:,0]
     results.append({"model":"Persistence","MAE":float(mean_absolute_error(act.ravel(),persist.ravel())),
                     "RMSE":float(np.sqrt(mean_squared_error(act.ravel(),persist.ravel()))),
                     "R2":float(r2_score(act.ravel(),persist.ravel()))})
+    mean4=X[test_slice,:,:,0].mean(axis=1)
+    results.append({"model":"4-week mean","MAE":float(mean_absolute_error(act.ravel(),mean4.ravel())),
+                    "RMSE":float(np.sqrt(mean_squared_error(act.ravel(),mean4.ravel()))),
+                    "R2":float(r2_score(act.ravel(),mean4.ravel()))})
 
-    for physics in [False,True]:
+    n_nodes=len(districts)
+    W_static=np.repeat(A[None,None,:,:],len(X),axis=0)
+    W_static=np.repeat(W_static,LOOKBACK,axis=1)
+
+    model_specs=[("Static ST-GNN",W_static,False),("DCMG ST-GNN",W,False),("Physics-Informed DCMG ST-GNN",W,True)]
+    for label,graph_weights,physics in model_specs:
         label="DCMG ST-GNN" if not physics else "Physics-Informed DCMG ST-GNN"
         vals=[]
         for seed in SEEDS:
-            model,epochs=train_model(Xn,Yn,W,tr,va,physics,seed)
-            met,pred,actual=evaluate(model,Xn[test_slice],Yn[test_slice],W[test_slice],(ymu,ysd))
+            model,epochs=train_model(Xn,Yn,graph_weights,tr,va,physics,seed)
+            met,pred,actual=evaluate(model,Xn[test_slice],Yn[test_slice],graph_weights[test_slice],(ymu,ysd))
             met["model"]=label; met["seed"]=seed; met["epochs"]=epochs
+            if physics and seed==SEEDS[0]:
+                torch.save({"state_dict":model.state_dict(),"feature_mean":mu,"feature_std":sd,"target_mean":ymu,"target_std":ysd,"districts":districts,"lookback":LOOKBACK,"model":"Physics-Informed DCMG ST-GNN"},os.path.join(OUT,"wb_physics_dcmg_seed42.pt"))
             vals.append(met)
             if seed==SEEDS[0]:
                 for ti,date in enumerate(target_dates[test_slice]):
@@ -301,6 +312,7 @@ def main():
         "validation_samples":int(va),
         "test_samples":int(len(X)-tr-va),
         "static_graph_directed_edges":int((A>0).sum()),
+        "static_graph":"4-nearest-neighbour geographic distance-decay graph from EpiClim district coordinates.",
         "dcmg":"Dynamic lagged transmission-pressure graph on a distance-decay mobility proxy; weights use source incidence at t-1 only.",
         "physics":"Discrete graph-transmission balance penalty plus non-negativity penalty; this is not a full SIR parameter-identification model.",
         "results":results
