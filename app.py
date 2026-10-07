@@ -131,6 +131,17 @@ def load_epiclim_west_bengal():
     )
 
 
+@st.cache_data(ttl=3600)
+def load_wb_xai_artifacts():
+    base = "https://raw.githubusercontent.com/sdb626462-star/onehealth/main/wb_outputs/"
+    preds = pd.read_csv(base + "wb_test_predictions_seed42.csv")
+    edges = pd.read_csv(base + "wb_dcmg_laststep_edges.csv")
+    districts = pd.read_csv(base + "wb_districts.csv")
+    preds["date"] = pd.to_datetime(preds["date"], errors="coerce")
+    edges["target_date"] = pd.to_datetime(edges["target_date"], errors="coerce")
+    return preds, edges, districts
+
+
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-np.clip(x, -60, 60)))
 
@@ -350,6 +361,309 @@ try:
 except Exception as exc:
     st.warning(
         "The West Bengal EpiClim section could not be loaded right now. "
+        f"Details: {exc}"
+    )
+
+
+# ---------------------------------------------------------------------
+# Explainable West Bengal ST-GNN map
+# ---------------------------------------------------------------------
+st.markdown("### 🔎 Explainable ST-GNN / DCMG map")
+st.caption(
+    "Interactive West Bengal map for the Dengue DCMG ST-GNN experiment. "
+    "Select a test date and target district to inspect prediction error and "
+    "the strongest incoming graph relationships."
+)
+
+try:
+    xai_preds, xai_edges, xai_districts = load_wb_xai_artifacts()
+    xai_dates = sorted(xai_preds["date"].dropna().dt.strftime("%Y-%m-%d").unique().tolist())
+
+    if xai_dates:
+        xai_date = st.selectbox(
+            "Forecast week", xai_dates, index=len(xai_dates)-1, key="xai_date"
+        )
+        date_preds = xai_preds[
+            xai_preds["date"].dt.strftime("%Y-%m-%d").eq(xai_date)
+        ].copy()
+
+        xai_district_names = xai_districts["district"].tolist()
+        default_target = (
+            date_preds.sort_values("predicted_cases", ascending=False)["district"].iloc[0]
+            if not date_preds.empty else xai_district_names[0]
+        )
+        xai_target = st.selectbox(
+            "Target district",
+            xai_district_names,
+            index=xai_district_names.index(default_target),
+            key="xai_target",
+        )
+
+        target_row = date_preds[date_preds["district"].eq(xai_target)]
+        if target_row.empty:
+            st.warning("No prediction is available for the selected district and date.")
+        else:
+            target_row = target_row.iloc[0]
+            target_actual = float(target_row["actual_cases"])
+            target_pred = float(target_row["predicted_cases"])
+            target_error = abs(target_pred - target_actual)
+
+            incoming = xai_edges[
+                (xai_edges["target_date"].dt.strftime("%Y-%m-%d").eq(xai_date))
+                & (xai_edges["target"].eq(xai_target))
+            ].copy().sort_values("weight", ascending=False)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Actual", f"{target_actual:,.0f}")
+            c2.metric("Predicted", f"{target_pred:,.1f}")
+            c3.metric("Absolute error", f"{target_error:,.1f}")
+            c4.metric("Incoming DCMG links", f"{len(incoming)}")
+
+            if not incoming.empty:
+                top_incoming = incoming.head(5).copy()
+                top_incoming["Influence (%)"] = (
+                    top_incoming["weight"] / top_incoming["weight"].sum() * 100
+                )
+                top_incoming = top_incoming[
+                    ["source", "weight", "Influence (%)"]
+                ].rename(columns={"source": "Source district"})
+                st.markdown(f"#### 🧠 What is influencing **{xai_target}**?")
+                st.dataframe(
+                    top_incoming.style.format(
+                        {"weight": "{:.3f}", "Influence (%)": "{:.1f}"}
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    "These are normalized DCMG graph weights. They describe how strongly "
+                    "the learned graph routes information from source districts into the "
+                    "target; they are not causal effects."
+                )
+
+            map_rows = []
+            pred_lookup = {r["district"]: r for r in date_preds.to_dict("records")}
+            for r in xai_districts.to_dict("records"):
+                p = pred_lookup.get(r["district"], {})
+                map_rows.append({
+                    "district": r["district"],
+                    "lat": float(r["Latitude"]),
+                    "lon": float(r["Longitude"]),
+                    "actual": float(p.get("actual_cases", 0.0)),
+                    "predicted": max(float(p.get("predicted_cases", 0.0)), 0.0),
+                })
+
+            edge_rows = []
+            top_edges = xai_edges[
+                xai_edges["target_date"].dt.strftime("%Y-%m-%d").eq(xai_date)
+            ].sort_values("weight", ascending=False).head(30)
+
+            coords = {
+                r["district"]: (float(r["Latitude"]), float(r["Longitude"]))
+                for r in xai_districts.to_dict("records")
+            }
+            for r in top_edges.to_dict("records"):
+                if r["source"] in coords and r["target"] in coords:
+                    edge_rows.append({
+                        "source": r["source"],
+                        "target": r["target"],
+                        "weight": float(r["weight"]),
+                        "source_lat": coords[r["source"]][0],
+                        "source_lon": coords[r["source"]][1],
+                        "target_lat": coords[r["target"]][0],
+                        "target_lon": coords[r["target"]][1],
+                    })
+
+            map_payload = json.dumps(
+                {
+                    "districts": map_rows,
+                    "edges": edge_rows,
+                    "target": xai_target,
+                    "date": xai_date,
+                    "top_sources": incoming.head(5)[
+                        ["source", "weight"]
+                    ].to_dict("records"),
+                },
+                ensure_ascii=False,
+            )
+
+            st.markdown(
+                "Use **Map mode** to switch between forecast burden, actual burden, "
+                "prediction error, and DCMG influence."
+            )
+
+            components.html(
+                f"""
+                <!doctype html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <link rel="stylesheet"
+                    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                    crossorigin="">
+                  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                    crossorigin=""></script>
+                  <style>
+                    html, body, #xai-map {{
+                      margin:0; padding:0; width:100%; height:650px;
+                      font-family:Arial,sans-serif;
+                    }}
+                    #toolbar {{
+                      position:absolute; z-index:1000; top:12px; left:55px;
+                      background:white; padding:10px 12px; border-radius:8px;
+                      box-shadow:0 2px 10px rgba(0,0,0,.18);
+                    }}
+                    #toolbar select {{
+                      margin-left:6px; padding:4px 8px; border:1px solid #ccc;
+                      border-radius:5px;
+                    }}
+                    .legend {{
+                      background:white; padding:8px 10px; line-height:1.4;
+                      border-radius:6px; box-shadow:0 1px 6px rgba(0,0,0,.15);
+                    }}
+                    .dot {{ display:inline-block; width:10px; height:10px;
+                      border-radius:50%; margin-right:5px; }}
+                  </style>
+                </head>
+                <body>
+                  <div id="xai-map"></div>
+                  <div id="toolbar">
+                    <b>Map mode</b>
+                    <select id="mode">
+                      <option value="predicted">Predicted cases</option>
+                      <option value="actual">Actual cases</option>
+                      <option value="error">Absolute error</option>
+                      <option value="graph">DCMG influence</option>
+                    </select>
+                  </div>
+                  <script>
+                    const DATA = {map_payload};
+                    const map = L.map('xai-map').setView([23.1, 87.9], 7);
+                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                      maxZoom: 12,
+                      attribution: '&copy; OpenStreetMap contributors'
+                    }}).addTo(map);
+
+                    const districtLayer = L.layerGroup().addTo(map);
+                    const edgeLayer = L.layerGroup().addTo(map);
+
+                    function colorFor(v, max) {{
+                      const x = Math.max(0, Math.min(1, v / Math.max(max, 1)));
+                      const r = Math.round(255 * x);
+                      const g = Math.round(190 * (1-x));
+                      const b = Math.round(220 * (1-x) + 35);
+                      return 'rgb(' + r + ',' + g + ',' + b + ')';
+                    }}
+
+                    function clearLayers() {{
+                      districtLayer.clearLayers();
+                      edgeLayer.clearLayers();
+                    }}
+
+                    function draw(mode) {{
+                      clearLayers();
+
+                      let values = DATA.districts.map(function(d) {{
+                        if (mode === 'actual') return d.actual;
+                        if (mode === 'error') return Math.abs(d.predicted - d.actual);
+                        return d.predicted;
+                      }});
+                      let vmax = Math.max.apply(null, values.concat([1]));
+
+                      DATA.districts.forEach(function(d) {{
+                        let v = mode === 'actual' ? d.actual :
+                                mode === 'error' ? Math.abs(d.predicted-d.actual) :
+                                d.predicted;
+
+                        if (mode === 'graph') {{
+                          const incoming = DATA.top_sources.find(
+                            function(x) {{ return x.source === d.district; }}
+                          );
+                          v = incoming ? incoming.weight : 0;
+                          vmax = Math.max(vmax, v, 1);
+                        }}
+
+                        const isTarget = d.district === DATA.target;
+                        const radius = isTarget ? 11 : 6 + 8*Math.sqrt(
+                          Math.max(v,0)/Math.max(vmax,1)
+                        );
+
+                        const marker = L.circleMarker([d.lat,d.lon], {{
+                          radius: radius,
+                          color: isTarget ? '#111827' : '#334155',
+                          weight: isTarget ? 3 : 1,
+                          fillColor: colorFor(Math.max(v,0), Math.max(vmax,1)),
+                          fillOpacity: 0.82
+                        }});
+
+                        marker.bindPopup(
+                          '<b>' + d.district + '</b><br>' +
+                          'Actual: <b>' + d.actual.toFixed(1) + '</b><br>' +
+                          'Predicted: <b>' + d.predicted.toFixed(1) + '</b><br>' +
+                          'Absolute error: <b>' +
+                          Math.abs(d.predicted-d.actual).toFixed(1) + '</b>'
+                        );
+                        marker.addTo(districtLayer);
+                      }});
+
+                      if (mode === 'graph') {{
+                        const graphEdges = DATA.edges.filter(function(e) {{
+                          return e.target === DATA.target;
+                        }}).slice(0, 12);
+
+                        graphEdges.forEach(function(e) {{
+                          L.polyline(
+                            [[e.source_lat,e.source_lon],
+                             [e.target_lat,e.target_lon]],
+                            {{
+                              color:'#2563eb',
+                              weight:2 + 8*Math.min(e.weight,1),
+                              opacity:0.65
+                            }}
+                          ).bindPopup(
+                            '<b>' + e.source + ' → ' + e.target + '</b><br>' +
+                            'DCMG weight: <b>' + e.weight.toFixed(3) + '</b>'
+                          ).addTo(edgeLayer);
+                        }});
+                      }}
+                    }}
+
+                    const legend = L.control({{position:'bottomright'}});
+                    legend.onAdd = function() {{
+                      const div = L.DomUtil.create('div','legend');
+                      div.innerHTML =
+                        '<b>Explainability</b><br>' +
+                        '<span class="dot" style="background:#2563eb"></span>' +
+                        'Blue edges = DCMG information flow<br>' +
+                        '<span class="dot" style="background:#111827"></span>' +
+                        'Black outline = selected target';
+                      return div;
+                    }};
+                    legend.addTo(map);
+
+                    document.getElementById('mode').addEventListener(
+                      'change', function(e) {{ draw(e.target.value); }}
+                    );
+                    draw('predicted');
+                  </script>
+                </body>
+                </html>
+                """,
+                height=680,
+                scrolling=False,
+            )
+
+            st.info(
+                "Interpretation: a thick DCMG edge means the model assigns a stronger "
+                "graph weight from that source district into the selected target for "
+                "the chosen week. This is model-internal influence, not proof of "
+                "disease transmission or causality."
+            )
+
+except Exception as exc:
+    st.warning(
+        "The explainability map could not be loaded right now. "
         f"Details: {exc}"
     )
 
