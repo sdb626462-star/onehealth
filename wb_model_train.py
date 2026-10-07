@@ -190,7 +190,7 @@ def train_model(X,Y,W,tr,va,physics=False,seed=42):
         if physics:
             # Discrete graph-transmission balance:
             # predicted change should be consistent with incoming lagged source pressure.
-            last_cases=Xtr[:,:,-1,0]
+            last_cases=Xtr[:,-1,:,0]
             incoming=torch.bmm(Atr[:,-1], torch.relu(last_cases.unsqueeze(-1))).squeeze(-1)
             delta=pred-last_cases
             balance=((delta-(0.02*incoming-0.02*last_cases))**2).mean()
