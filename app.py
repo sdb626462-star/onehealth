@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="OneHealth | Disease Surveillance",
@@ -851,7 +852,6 @@ st.caption(
     "predictions across the 20 regions."
 )
 
-import streamlit.components.v1 as components
 
 mappls_token = st.secrets.get("MAPPLS_API_KEY", "")
 
